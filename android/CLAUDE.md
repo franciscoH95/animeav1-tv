@@ -1089,15 +1089,18 @@ izquierdo + rejilla derecha).
   ⚠️ Si la serie no tiene backdrop, el banner cae a la **portada recortada** y solo después a un
   degradado neutro: el `placeholder_backdrop` con su "play" gigante, a lo ancho de la cabecera, se
   leía como un fallo de carga.
-- **Sección 2**: la rejilla de episodios, con **columnas responsivas** (`columnsFor`, a partir de un
-  ancho objetivo por tile) en vez de las 5 fijas de antes, que estaban calculadas para la media
-  columna del diseño anterior.
+- **Sección 2**: la rejilla de episodios, **5 columnas fijas** (`EPISODE_COLUMNS`). 5 × 10 filas son
+  los 50 de un bloque exactos, así que un bloque es una cuadrícula completa y no una última fila
+  coja. Hubo una etapa de columnas responsivas (a partir de un ancho objetivo por tile) que en una
+  TV 4K daba 8: con el fotograma del capítulo dentro, tiles de ese tamaño se quedaban pequeños para
+  reconocer la escena de un vistazo. ⚠️ El precio es real: a 5 columnas el tile mide ~690 px en 4K y
+  la miniatura del CDN tiene 220, así que se estira unas 3 veces y se ve suave — y no hay versión
+  mayor de esas imágenes.
   ⚠️ **Se ven TODOS los episodios**: la rejilla es `wrap_content` y quien scrollea es la página, no
   ella (`isNestedScrollingEnabled = false`, o se pelean por el desplazamiento). Hubo una versión con
-  tope de 4 filas para tener *Series relacionadas* cerca, pero con columnas responsivas eso son 32
-  episodios y una serie de 64 parecía **cortada**. El coste está acotado por los **bloques**: por
-  encima de `EPISODES_PER_BLOCK` (100) se enseña un bloque cada vez, así que el máximo son ~13 filas
-  aunque la serie tenga 1172 episodios.
+  tope de 4 filas para tener *Series relacionadas* cerca, pero eso dejaba una serie de 64 episodios
+  **cortada**. El coste está acotado por los **bloques**: por encima de `EPISODES_PER_BLOCK` (50) se
+  enseña un bloque cada vez, así que el máximo son 10 filas aunque la serie tenga 1175 episodios.
   ⚠️ Ya **no** se hace `scrollToPosition` al primer episodio sin ver: la rejilla no scrollea por su
   cuenta y la ficha debe abrirse por arriba, en la portada. El episodio que toca sigue señalado y
   "Continuar" lleva a él.

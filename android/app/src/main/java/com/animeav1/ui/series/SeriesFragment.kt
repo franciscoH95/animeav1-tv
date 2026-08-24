@@ -85,11 +85,19 @@ class SeriesFragment : Fragment() {
     private val DAY_FORMAT = SimpleDateFormat("EEEE d", Locale("es", "ES"))
         .apply { timeZone = TimeZone.getTimeZone("UTC") }
 
-    /** Ancho al que se aspira para cada tile de episodio. De aquí salen las columnas. */
-    private val EPISODE_TILE_TARGET_DP = 104
-
-    /** Columnas si aún no se conoce el ancho (red de seguridad). */
-    private val EPISODE_COLUMNS_FALLBACK = 6
+    /**
+     * Columnas de la rejilla de episodios. **Fijas**, no calculadas del ancho.
+     *
+     * 5 columnas × 10 filas = los 50 episodios de un bloque exactos, así que un bloque es una
+     * cuadrícula completa y no una última fila coja. Antes se derivaban de un ancho objetivo por
+     * tile (~104dp) y en una TV 4K salían 8: con el fotograma del capítulo dentro, tiles de ese
+     * tamaño se quedaban pequeños para reconocer la escena de un vistazo.
+     *
+     * ⚠️ El precio, que es real: a 5 columnas el tile mide ~690 px en una TV 4K y la miniatura del
+     * CDN tiene 220, así que se estira unas 3 veces. Se ve suave. No hay versión mayor de esas
+     * imágenes (ver [com.animeav1.data.AnimeImages]).
+     */
+    private val EPISODE_COLUMNS = 5
 
     /**
      * Tamaño de bloque de la rejilla de episodios.
@@ -652,13 +660,7 @@ class SeriesFragment : Fragment() {
     /** Rellena la rejilla con los episodios que toque. */
     private fun fillEpisodeGrid(view: View, series: Series, shown: List<EpisodeRef>, chipsVisible: Boolean) {
         val watched = localVm.watchedEpisodes.value
-        val grid = view.findViewById<RecyclerView>(R.id.episodes_recycler)
-        // El ancho útil se mide del propio RecyclerView; antes del primer layout vale el de la
-        // pantalla menos los márgenes de seguridad, que es lo que va a acabar teniendo.
-        val usable = if (grid.width > 0) grid.width
-                     else resources.displayMetrics.widthPixels -
-                          2 * resources.getDimensionPixelSize(R.dimen.tv_safe_h)
-        val columns = columnsFor(usable)
+        val columns = EPISODE_COLUMNS
         episodeAdapter = EpisodeGridAdapter(
             episodes         = shown,
             seriesId         = series.id,
@@ -705,20 +707,6 @@ class SeriesFragment : Fragment() {
         // ⚠️ Ya NO se hace `scrollToPosition` al primer episodio sin ver: la rejilla no scrollea por
         // su cuenta (lo hace la página) y la ficha debe abrirse por arriba, en la portada. El
         // episodio que toca sigue señalado con su marca, y "Continuar" lleva a él directamente.
-    }
-
-    /**
-     * Columnas de la rejilla **según el ancho que haya**, no un número fijo.
-     *
-     * Antes eran 5 clavadas, calculadas para la media columna derecha del diseño anterior. Ahora la
-     * rejilla ocupa el ancho entero: con 5 columnas los tiles saldrían enormes, y cualquier número
-     * fijo se rompe en cuanto cambia el ancho útil (otra resolución, otro margen de seguridad). Se
-     * calcula desde un ancho objetivo por tile, acotado para no acabar ni con 2 columnas ni con 20.
-     */
-    private fun columnsFor(widthPx: Int): Int {
-        if (widthPx <= 0) return EPISODE_COLUMNS_FALLBACK
-        val target = EPISODE_TILE_TARGET_DP * resources.displayMetrics.density
-        return (widthPx / target).toInt().coerceIn(4, 12)
     }
 
     /**
