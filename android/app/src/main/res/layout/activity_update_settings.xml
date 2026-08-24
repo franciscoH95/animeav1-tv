@@ -1,0 +1,89 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Apartado de actualizaciones: qué versión tienes, buscar a mano y ver las novedades.
+
+  Existe porque el aviso automático solo aparece cuando hay algo nuevo y como mucho una vez al día:
+  sin esta pantalla no había forma de preguntar "¿hay actualización?" ni de leer qué trae la versión
+  que ya tienes instalada.
+-->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/bg_dark">
+
+    <LinearLayout
+        android:layout_width="720dp"
+        android:layout_height="wrap_content"
+        android:layout_gravity="center"
+        android:orientation="vertical"
+        android:paddingStart="@dimen/tv_safe_h"
+        android:paddingEnd="@dimen/tv_safe_h">
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/updates_title"
+            android:textColor="@color/text_primary"
+            android:textSize="22sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/updates_installed"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:textColor="@color/text_secondary"
+            android:textSize="13sp"
+            android:layout_marginTop="6dp" />
+
+        <TextView
+            android:id="@+id/updates_state"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:textColor="@color/accent_light"
+            android:textSize="15sp"
+            android:textStyle="bold"
+            android:layout_marginTop="20dp" />
+
+        <TextView
+            android:id="@+id/updates_notes"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:textColor="@color/text_secondary"
+            android:textSize="13sp"
+            android:lineSpacingExtra="2dp"
+            android:layout_marginTop="10dp"
+            android:visibility="gone" />
+
+        <LinearLayout
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:layout_marginTop="24dp">
+
+            <Button
+                android:id="@+id/btn_check_updates"
+                android:layout_width="wrap_content"
+                android:layout_height="48dp"
+                android:text="@string/updates_check"
+                android:textSize="14sp"
+                android:textColor="@color/text_primary"
+                android:background="@drawable/card_focus_bg"
+                android:paddingHorizontal="24dp"
+                android:focusable="true"
+                android:layout_marginEnd="12dp" />
+
+            <!-- Solo cuando hay algo que instalar. -->
+            <Button
+                android:id="@+id/btn_install_update"
+                android:layout_width="wrap_content"
+                android:layout_height="48dp"
+                android:text="@string/update_now"
+                android:textSize="14sp"
+                android:textColor="@color/text_primary"
+                android:background="@drawable/card_focus_bg"
+                android:paddingHorizontal="24dp"
+                android:focusable="true"
+                android:visibility="gone" />
+        </LinearLayout>
+    </LinearLayout>
+</FrameLayout>

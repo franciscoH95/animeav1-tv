@@ -750,8 +750,11 @@ devolvió `delete()`: es lo único que puede afirmar "ahí ya no queda nada con 
 
 ⚠️ **La copia pública se lista por ruta directa** (`Entry.Source.Public`) en API ≤ 28 **y** en API 30+
 con acceso a todos los archivos —ahí es el ÚNICO camino que ve las copias de instalaciones
-anteriores—. En API 29 no hay forma: ni permiso legacy ni "todos los archivos", así que solo ve las
-suyas. Y eso no es un adorno: `mediaEntries` devuelve vacío por debajo de Q, así que antes **toda** copia salía etiquetada
+anteriores—. ⚠️ Y en **API 29 también**, gracias a `requestLegacyExternalStorage` en el manifiesto
+—Android 10 es la última versión que lo honra— y a que `WRITE_EXTERNAL_STORAGE` llega hasta
+`maxSdkVersion="29"`. Con el 28 de antes la app ni lo pedía: en un Android TV 10 la pantalla de
+copias no ofrecía nada y la lista salía vacía tras reinstalar, que es justo el aparato donde se
+reportó. Y eso no es un adorno: `mediaEntries` devuelve vacío por debajo de Q, así que antes **toda** copia salía etiquetada
 "solo en la app · se pierde al desinstalar" y el modal prometía no tocar Descargas… mientras el
 borrado sí la borraba. Etiqueta, aviso y efecto decían tres cosas distintas y se cumplía la
 destructiva. Va detrás de `WRITE_EXTERNAL_STORAGE`, igual que exportar: **lo que no se puede listar
@@ -1438,6 +1441,20 @@ cd /tmp/ota && python3 -m http.server 8000 &
 adb install -r app/build/outputs/apk/debug/app-debug.apk
 adb shell run-as com.animeav1 rm -f shared_prefs/updates.xml   # olvida el "ya miré hoy"
 ```
+
+**Apartado "Actualizaciones"** (`ui/update/UpdateSettingsActivity`, desde Ajustes del perfil): qué
+versión hay instalada, botón para **buscar a mano** y las **novedades**. Existe porque el aviso
+automático solo salta cuando hay algo nuevo y como mucho una vez al día: sin esta pantalla no había
+forma de preguntar "¿hay actualización?" ni de leer qué traía la versión que ya está instalada — quien
+acababa de actualizar se quedaba sin saber qué había cambiado.
+
+- ⚠️ Aquí NO se respeta el intervalo de `UpdateChecker`: ese existe para no gastar red sola en cada
+  vuelta a Inicio, no para hacer esperar a quien pregunta.
+- Las notas se enseñan en los **dos** casos. El manifiesto describe siempre la última versión
+  publicada, así que estando al día son las de la que ya tienes.
+- Muestra también **la versión de Android del aparato**, y no es un adorno: qué se puede hacer con
+  los permisos de almacenamiento y de instalación depende de esa cifra, y es lo primero que hay que
+  saber cuando algo no aparece donde debería.
 
 **Lo que falta para publicar de verdad:** crear el repo (hoy el proyecto no tiene ni un commit),
 rellenar `githubRepo`, y un script que suba `versionCode`, compile el release firmado, calcule el

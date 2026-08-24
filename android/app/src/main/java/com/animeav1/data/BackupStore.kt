@@ -381,12 +381,20 @@ internal object BackupStore {
      */
     private fun canAccessPublicDir(context: Context): Boolean = when {
         Build.VERSION.SDK_INT < Build.VERSION_CODES.M -> true
-        Build.VERSION.SDK_INT <= Build.VERSION_CODES.P ->
+        // ⚠️ Hasta Q incluido. En Android 10 el permiso clásico SÍ sirve gracias a
+        // `requestLegacyExternalStorage`, y es el único camino que hay: el acceso a "todos los
+        // archivos" no existe hasta API 30. Dejando fuera a Q, en un Android TV 10 la app no pedía
+        // nada y las copias de Descargas eran invisibles.
+        Build.VERSION.SDK_INT <= Build.VERSION_CODES.Q ->
             ContextCompat.checkSelfPermission(context, Manifest.permission.WRITE_EXTERNAL_STORAGE) ==
                 PackageManager.PERMISSION_GRANTED
-        Build.VERSION.SDK_INT >= Build.VERSION_CODES.R -> Environment.isExternalStorageManager()
-        else -> false   // API 29: ni permiso legacy ni "todos los archivos"
+        else -> Environment.isExternalStorageManager()
     }
+
+    /** El permiso clásico de almacenamiento es el que hace falta (API ≤ 29). */
+    fun needsLegacyStoragePermission(context: Context): Boolean =
+        Build.VERSION.SDK_INT in Build.VERSION_CODES.M..Build.VERSION_CODES.Q &&
+            !canAccessPublicDir(context)
 
     /** ¿Se ven también las copias que dejó otra instalación? Ver [canAccessPublicDir]. */
     fun seesForeignBackups(context: Context): Boolean = canAccessPublicDir(context)

@@ -12,6 +12,7 @@ import com.animeav1.data.LocalRepository
 import com.animeav1.data.ProfileManager
 import com.animeav1.data.local.AppDatabase
 import com.animeav1.ui.backup.BackupActivity
+import com.animeav1.ui.update.UpdateSettingsActivity
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
@@ -37,6 +38,9 @@ class ProfileSettingsActivity : AppCompatActivity() {
         }
         findViewById<TextView>(R.id.settings_backup).setOnClickListener {
             startActivity(Intent(this, BackupActivity::class.java))
+        }
+        findViewById<TextView>(R.id.settings_updates).setOnClickListener {
+            startActivity(Intent(this, UpdateSettingsActivity::class.java))
         }
 
         // ⚠️ Resolver el perfil aquí también, como hacen MainActivity y ProfilesActivity:

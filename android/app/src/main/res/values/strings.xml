@@ -211,4 +211,13 @@
     <string name="backup_hint_full_access">Se listan las copias de Descargas y las de la carpeta de la app.</string>
     <string name="backup_no_settings">Este aparato no tiene esa pantalla de ajustes</string>
     <string name="backup_foreign_no_delete">Esta copia no la creó la app, así que no la borra. Bórrala desde donde la dejaste.</string>
+    <string name="updates_title">Actualizaciones</string>
+    <string name="updates_installed">Versión instalada %1$s (%2$d) · Android %3$s</string>
+    <string name="updates_idle">Pulsa para comprobar si hay una versión nueva.</string>
+    <string name="updates_checking">Comprobando…</string>
+    <string name="updates_up_to_date">Estás al día.</string>
+    <string name="updates_available">Hay una versión nueva: %1$s</string>
+    <string name="updates_failed">No se pudo comprobar. Revisa la conexión e inténtalo otra vez.</string>
+    <string name="updates_check">BUSCAR ACTUALIZACIONES</string>
+    <string name="settings_updates">ACTUALIZACIONES</string>
 </resources>

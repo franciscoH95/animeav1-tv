@@ -2,11 +2,18 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
     <uses-permission android:name="android.permission.INTERNET" />
-    <!-- Solo para escribir la copia de seguridad en Descargas en API <= 28. Desde API 29 se hace
-         por MediaStore, que no pide permiso, de ahí el maxSdkVersion. -->
+    <!-- Copias de seguridad en Descargas.
+         ⚠️ Hasta API **29**, no 28. En Android 10 el permiso sigue existiendo y, con
+         `requestLegacyExternalStorage`, es lo ÚNICO que deja leer las copias que dejó otra
+         instalación: ahí no existe el acceso a "todos los archivos" de API 30+. Con maxSdkVersion
+         28 la app ni lo pedía, así que en un Android TV 10 la pantalla de copias no ofrecía nada y
+         la lista salía vacía tras reinstalar. -->
     <uses-permission
         android:name="android.permission.WRITE_EXTERNAL_STORAGE"
-        android:maxSdkVersion="28" />
+        android:maxSdkVersion="29" />
+    <uses-permission
+        android:name="android.permission.READ_EXTERNAL_STORAGE"
+        android:maxSdkVersion="29" />
     <!-- Ver las copias de seguridad que dejó una instalación ANTERIOR. MediaStore solo devuelve lo
          que escribió esta instalación, así que sin esto la lista sale vacía justo cuando hace falta
          restaurar: tras reinstalar. El usuario lo concede en Ajustes, y sin ello la app sigue
@@ -21,6 +28,7 @@
 
     <application
         android:name=".AnimeApp"
+        android:requestLegacyExternalStorage="true"
         android:allowBackup="true"
         android:fullBackupContent="@xml/backup_rules"
         android:dataExtractionRules="@xml/data_extraction_rules"
@@ -82,6 +90,11 @@
             android:configChanges="keyboard|keyboardHidden|navigation"
             android:windowSoftInputMode="stateUnchanged" />
 
+
+        <activity
+            android:name=".ui.update.UpdateSettingsActivity"
+            android:exported="false"
+            android:screenOrientation="landscape" />
 
         <activity
             android:name=".ui.update.UpdateActivity"

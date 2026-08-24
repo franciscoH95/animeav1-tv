@@ -100,6 +100,14 @@ class BackupActivity : FragmentActivity() {
 
         btnAllFiles = findViewById(R.id.btn_all_files)
         btnAllFiles.setOnClickListener {
+            // Dos caminos según la versión de Android: en 10 y anteriores basta el permiso de
+            // ejecución de siempre; desde 11 hay que ir a Ajustes a dar "todos los archivos".
+            if (BackupStore.needsLegacyStoragePermission(this)) {
+                requestPermissions(
+                    arrayOf(Manifest.permission.WRITE_EXTERNAL_STORAGE), REQ_WRITE_LIST
+                )
+                return@setOnClickListener
+            }
             val intent = BackupStore.allFilesAccessIntent(this) ?: return@setOnClickListener
             // Puede no haber quién lo resuelva en un aparato raro: mejor un aviso que un crash.
             runCatching { startActivity(intent) }
@@ -132,7 +140,8 @@ class BackupActivity : FragmentActivity() {
      */
     private fun updateAccessHint() {
         val full = BackupStore.seesForeignBackups(this)
-        val canAsk = BackupStore.allFilesAccessIntent(this) != null
+        val canAsk = BackupStore.allFilesAccessIntent(this) != null ||
+            BackupStore.needsLegacyStoragePermission(this)
         btnAllFiles.visibility = if (!full && canAsk) View.VISIBLE else View.GONE
         importHint.text = when {
             full     -> getString(R.string.backup_hint_full_access)
@@ -195,7 +204,14 @@ class BackupActivity : FragmentActivity() {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
         // Concedido o no, se exporta: sin permiso queda solo el buzón interno, que sigue sirviendo
         // para importar en esta misma instalación, y el texto de resultado dice dónde acabó.
-        if (requestCode == REQ_WRITE) exportNow()
+        when (requestCode) {
+            // Concedido o no, se exporta: sin permiso queda solo el buzón interno, que sigue
+            // sirviendo para importar en esta misma instalación, y el resultado dice dónde acabó.
+            REQ_WRITE -> exportNow()
+            // ⚠️ Código propio para el permiso pedido desde "ver todas las copias". Con uno solo,
+            // dárselo por ese botón disparaba una EXPORTACIÓN que nadie había pedido.
+            REQ_WRITE_LIST -> { updateAccessHint(); refreshList() }
+        }
     }
 
     // ── Importar ───────────────────────────────────────────────────────────────────────────────
@@ -405,5 +421,6 @@ class BackupActivity : FragmentActivity() {
 
     private companion object {
         const val REQ_WRITE = 1
+        const val REQ_WRITE_LIST = 2
     }
 }

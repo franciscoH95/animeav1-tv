@@ -85,6 +85,23 @@
             android:drawablePadding="16dp"
             android:paddingStart="24dp"
             android:paddingEnd="24dp"
+            android:layout_marginBottom="12dp"
+            android:focusable="true" />
+
+        <Button
+            android:id="@+id/settings_updates"
+            style="@style/Widget.AppCompat.Button.Borderless"
+            android:layout_width="420dp"
+            android:layout_height="60dp"
+            android:text="@string/settings_updates"
+            android:textSize="15sp"
+            android:textColor="@color/text_primary"
+            android:background="@drawable/card_focus_bg"
+            android:gravity="center_vertical"
+            android:drawableStart="@drawable/ic_update"
+            android:drawablePadding="16dp"
+            android:paddingStart="24dp"
+            android:paddingEnd="24dp"
             android:focusable="true" />
     </LinearLayout>
 
