@@ -854,8 +854,12 @@ queda `MainActivity → ProfilesActivity`). Al volver de recientes tampoco se ve
 - El sonido es una **sintonía de dos golpes** (`res/raw/intro_sting.m4a`, 15 KB, 2,0 s), no una voz:
   sintetizada con un script de numpy —bombo con barrido de frecuencia de 190→62 Hz para el primero
   y 240→92 Hz para el segundo, más fuerte y con cola larga— y convertida con `afconvert`. La
-  envolvente medida es la que se busca: −12,8 dB en el primer golpe, −5,6 dB en el segundo a los
-  0,44 s y caída limpia hasta el silencio. Para cambiarlo basta dejar otro fichero con ese nombre;
+  envolvente buscada son dos golpes con caída limpia hasta el silencio. ⚠️ Pero el fichero quedó
+  masterizado **a tope**: medido sobre el `.m4a`, pica a **−1,0 dBFS** (rms −11,5), así que sonaba
+  tan alto como el aparato dejara. Por eso el reproductor lo atenúa con
+  `setVolume(INTRO_VOLUME)` —0,35, o sea −9,1 dB— en vez de regenerar el audio: una constante se lee
+  y se ajusta, un fichero rehecho no dice a qué nivel se hizo. Si algún día se cambia el sonido, hay
+  que volver a medir: el nivel de la constante está calculado para ESTE fichero. Para cambiarlo basta dejar otro fichero con ese nombre;
   si dura distinto, ajustar `HOLD_MS`.
 - ⚠️ **La animación NO se lanza en `onCreate`**: ahí la ventana todavía no se dibuja —el sistema está
   reproduciendo su propia animación de apertura— así que los primeros fotogramas se perdían y la

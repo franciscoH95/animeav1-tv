@@ -35,6 +35,19 @@ import kotlinx.coroutines.launch
 class IntroActivity : AppCompatActivity() {
 
     private var player: MediaPlayer? = null
+
+    /**
+     * Volumen de la sintonía, sobre 1.
+     *
+     * ⚠️ El fichero está masterizado **a tope**: medido, pica a **-1,0 dBFS** (rms -11,5), así que
+     * sonaba tan alto como el aparato permitiera para ese flujo — en una TV, con la barra de volumen
+     * donde la deje cada uno, un arranque así asusta más que presenta. 0,35 son -9,1 dB, que dejan
+     * el pico en -10,2 dBFS y el rms en -20,6: se oye, pero no salta.
+     *
+     * Se baja aquí y no rebajando el `.m4a` porque una constante se lee y se ajusta, mientras que un
+     * fichero regenerado no dice a qué nivel se hizo.
+     */
+    private val INTRO_VOLUME = 0.35f
     private var show: Job? = null
 
     /** La animación arranca UNA vez, la dispare quien la dispare (ver [startShow]). */
@@ -184,7 +197,14 @@ class IntroActivity : AppCompatActivity() {
                 .setContentType(AudioAttributes.CONTENT_TYPE_MOVIE)
                 .build()
             val session = (getSystemService(AUDIO_SERVICE) as AudioManager).generateAudioSessionId()
-            player = MediaPlayer.create(this, R.raw.intro_sting, attrs, session)
+            player = MediaPlayer.create(this, R.raw.intro_sting, attrs, session)?.apply {
+                // ⚠️ El volumen se baja AQUÍ y no rebajando el fichero: así queda en una constante
+                // que se lee y se ajusta, en vez de en un .m4a que hay que volver a sintetizar y del
+                // que nadie recuerda a qué nivel se generó. `setVolume` sí se puede llamar después
+                // de `create` —al contrario que los atributos de audio, que hay que fijarlos antes
+                // de preparar—, y escala sobre el volumen del aparato: baja la cortinilla, no la TV.
+                setVolume(INTRO_VOLUME, INTRO_VOLUME)
+            }
         }
     }
 
