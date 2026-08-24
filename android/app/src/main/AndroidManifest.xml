@@ -7,6 +7,12 @@
     <uses-permission
         android:name="android.permission.WRITE_EXTERNAL_STORAGE"
         android:maxSdkVersion="28" />
+    <!-- Ver las copias de seguridad que dejó una instalación ANTERIOR. MediaStore solo devuelve lo
+         que escribió esta instalación, así que sin esto la lista sale vacía justo cuando hace falta
+         restaurar: tras reinstalar. El usuario lo concede en Ajustes, y sin ello la app sigue
+         funcionando (solo ve sus propias copias). -->
+    <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE" />
+
     <!-- Actualizaciones OTA: instalar el APK descargado. Desde API 26 el usuario tiene además que
          autorizar a esta app en "orígenes desconocidos" (ver ApkInstaller.canInstall). -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />

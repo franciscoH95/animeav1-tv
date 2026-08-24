@@ -205,4 +205,8 @@
     <string name="episodes_search_empty">Ningún episodio empieza por %1$s</string>
     <string name="episodes_block_title">Episodios</string>
     <string name="episodes_block_label">%1$s  ▾</string>
+    <string name="backup_grant_access">VER TODAS LAS COPIAS</string>
+    <string name="backup_hint_no_access">Faltan por ver las copias que dejó una instalación anterior de la app: Android no deja leerlas sin permiso. Dáselo y aparecerán aquí.</string>
+    <string name="backup_hint_full_access">Se listan las copias de Descargas y las de la carpeta de la app.</string>
+    <string name="backup_no_settings">Este aparato no tiene esa pantalla de ajustes</string>
 </resources>

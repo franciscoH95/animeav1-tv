@@ -68,6 +68,7 @@ class BackupActivity : FragmentActivity() {
 
     /** El permiso de escritura pública (API ≤28) se pide una sola vez por visita a la pantalla. */
     private var writeAsked = false
+    private lateinit var btnAllFiles: Button
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -97,7 +98,13 @@ class BackupActivity : FragmentActivity() {
         list.adapter = adapter
         list.setHasFixedSize(true)
 
-        importHint.text = getString(R.string.backup_import_hint, BackupStore.inboxPath(this))
+        btnAllFiles = findViewById(R.id.btn_all_files)
+        btnAllFiles.setOnClickListener {
+            val intent = BackupStore.allFilesAccessIntent(this) ?: return@setOnClickListener
+            // Puede no haber quién lo resuelva en un aparato raro: mejor un aviso que un crash.
+            runCatching { startActivity(intent) }
+                .onFailure { toast(getString(R.string.backup_no_settings)) }
+        }
 
         btnExport.setOnClickListener { exportNow() }
         btnMerge.setOnClickListener { runImport(replace = false) }
@@ -106,13 +113,33 @@ class BackupActivity : FragmentActivity() {
         btnCancelImport.setOnClickListener { hideConfirm() }
 
         btnExport.post { btnExport.requestFocus() }
+        updateAccessHint()
         refreshList()
     }
 
     override fun onResume() {
         super.onResume()
-        // Un fichero puede haber aparecido por `adb push` mientras la pantalla estaba en segundo plano.
+        // Un fichero puede haber aparecido por `adb push` mientras la pantalla estaba en segundo
+        // plano, y —lo importante— aquí se vuelve justo después de conceder el acceso a todos los
+        // archivos en Ajustes: sin releer, el usuario da el permiso y la lista sigue igual de vacía.
+        updateAccessHint()
         refreshList()
+    }
+
+    /**
+     * El aviso y el botón de permiso, según se estén viendo TODAS las copias o solo las de esta
+     * instalación. Ver `BackupStore.seesForeignBackups`.
+     */
+    private fun updateAccessHint() {
+        val full = BackupStore.seesForeignBackups(this)
+        val canAsk = BackupStore.allFilesAccessIntent(this) != null
+        btnAllFiles.visibility = if (!full && canAsk) View.VISIBLE else View.GONE
+        importHint.text = when {
+            full     -> getString(R.string.backup_hint_full_access)
+            canAsk   -> getString(R.string.backup_hint_no_access)
+            // Sin forma de pedirlo (API 29): queda el camino manual de dejar el fichero en el buzón.
+            else     -> getString(R.string.backup_import_hint, BackupStore.inboxPath(this))
+        }
     }
 
     // ── Exportar ───────────────────────────────────────────────────────────────────────────────

@@ -3,11 +3,13 @@ package com.animeav1.data
 import android.Manifest
 import android.content.ContentValues
 import android.content.Context
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.os.Environment
 import android.provider.MediaStore
+import android.provider.Settings
 import androidx.core.content.ContextCompat
 import java.io.File
 
@@ -260,12 +262,15 @@ internal object BackupStore {
      * etiquetaba como "solo en la app · se pierde al desinstalar" el único respaldo que sobrevive a
      * desinstalar — y el modal de borrado prometía no tocar Descargas mientras [delete] lo borraba.
      *
-     * ⚠️ Va detrás del permiso: sin `WRITE_EXTERNAL_STORAGE` concedido no se puede ni leer esa
-     * carpeta, y listar a ciegas llevaría a afirmar cosas que no se pueden comprobar. Lo que no se
-     * lista tampoco se borra (ver [delete]).
+     * ⚠️ Va detrás del permiso ([canAccessPublicDir]): sin él no se puede ni leer esa carpeta, y
+     * listar a ciegas llevaría a afirmar cosas que no se pueden comprobar. Lo que no se lista
+     * tampoco se borra (ver [delete]).
+     *
+     * ⚠️ Ya NO es solo cosa de API ≤ 28: desde API 30, con acceso a todos los archivos concedido,
+     * este es el ÚNICO camino que ve las copias de instalaciones anteriores — MediaStore solo
+     * devuelve las de esta.
      */
     private fun publicFileEntries(context: Context): List<Entry> {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) return emptyList()
         if (!canAccessPublicDir(context)) return emptyList()
         @Suppress("DEPRECATION")
         val dir = File(
@@ -286,10 +291,33 @@ internal object BackupStore {
      * se concede al instalar; de 23 a 28 es de ejecución, y `BackupActivity` ya lo pide antes de
      * exportar.
      */
-    private fun canAccessPublicDir(context: Context): Boolean =
-        Build.VERSION.SDK_INT < Build.VERSION_CODES.M ||
+    private fun canAccessPublicDir(context: Context): Boolean = when {
+        Build.VERSION.SDK_INT < Build.VERSION_CODES.M -> true
+        Build.VERSION.SDK_INT <= Build.VERSION_CODES.P ->
             ContextCompat.checkSelfPermission(context, Manifest.permission.WRITE_EXTERNAL_STORAGE) ==
-            PackageManager.PERMISSION_GRANTED
+                PackageManager.PERMISSION_GRANTED
+        Build.VERSION.SDK_INT >= Build.VERSION_CODES.R -> Environment.isExternalStorageManager()
+        else -> false   // API 29: ni permiso legacy ni "todos los archivos"
+    }
+
+    /** ¿Se ven también las copias que dejó otra instalación? Ver [canAccessPublicDir]. */
+    fun seesForeignBackups(context: Context): Boolean = canAccessPublicDir(context)
+
+    /**
+     * Pantalla donde se concede el acceso a todos los archivos, o null si en este aparato no aplica
+     * (por debajo de API 30 se resuelve con el permiso normal de almacenamiento).
+     *
+     * ⚠️ Con `package:` en los datos: el intent sin datos abre la lista de TODAS las apps, que con
+     * un mando es buscarse a uno mismo en una lista larga — y en esta imagen de TV la variante sin
+     * datos **no la resuelve nadie** (comprobado), así que ni se abriría.
+     */
+    fun allFilesAccessIntent(context: Context): Intent? {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return null
+        return Intent(
+            Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION,
+            Uri.parse("package:${context.packageName}")
+        )
+    }
 
     fun read(context: Context, entry: Entry): String? {
         for (source in entry.sources.sortedBy { it !is Entry.Source.Local }) {
@@ -363,9 +391,15 @@ internal object BackupStore {
         }
 
         val inbox = deleteFromInbox(context, name)
-        val downloads =
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) deleteFromMediaStore(context, name)
-            else deleteFromPublicPath(context, name)
+        val downloads = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            // Los dos caminos: MediaStore solo alcanza lo que escribió ESTA instalación, y con
+            // acceso a todos los archivos también se ven —y se borran— las de las anteriores, que
+            // MediaStore ni devuelve. Cada mitad verifica volviendo a mirar, así que un `&&` de dos
+            // "ya no queda nada con ese nombre" sigue significando eso.
+            val byMedia = deleteFromMediaStore(context, name)
+            val byPath  = if (canAccessPublicDir(context)) deleteFromPublicPath(context, name) else true
+            byMedia && byPath
+        } else deleteFromPublicPath(context, name)
         return DeleteResult(inbox, downloads)
     }
 

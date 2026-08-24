@@ -700,15 +700,26 @@ estado ya decidido, reaplicar las reglas movería series de lista al restaurarla
   soporta. **Nada de selector de ficheros**: la app escribe en un sitio fijo y ofrece ella la lista.
 - **La app no puede leer `/sdcard/Download` ajeno** (`Permission denied`) ni escribir ahí por ruta
   directa. La copia pública se escribe por **MediaStore**, que sí funciona sin permisos.
-- **MediaStore pierde la propiedad al desinstalar.** Comprobado: tras `uninstall`+`install`, la
-  consulta por `owner_package_name` devuelve las exportaciones de ESTA instalación pero **no** la que
-  se hizo antes de desinstalar, aunque el fichero siga en Descargas. Por eso hay dos destinos.
+- **MediaStore solo devuelve lo que escribió ESTA instalación.** Comprobado: tras
+  `uninstall`+`install`, la consulta a `MediaStore.Downloads` devuelve las exportaciones de esta
+  instalación pero **no** las de antes de desinstalar, aunque los ficheros sigan en Descargas. Es el
+  agujero más feo del sistema de copias, porque justo entonces es cuando hace falta restaurar — y el
+  buzón no salva la papeleta: `Android/data/<paquete>` **lo borra Android al desinstalar**
+  (comprobado: la carpeta ya no existe tras reinstalar).
+  ⚠️ **Se arregla con acceso a todos los archivos** (`MANAGE_EXTERNAL_STORAGE`): con él,
+  `BackupStore` lee `Download/AnimeAV1/` **por ruta** y aparecen todas, sean de quien sean. En una TV
+  esa pantalla de ajustes existe —`com.android.tv.settings…AllFilesAccessActivity`, resuelta con
+  `ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION` **y el `package:` en los datos**; sin datos no la
+  resuelve nadie— y la pantalla de copias ofrece el botón "VER TODAS LAS COPIAS" mientras falte.
+  Verificado de punta a punta: 6 copias de una instalación anterior invisibles → conceder → salen
+  listadas → restaurar una devuelve las 5 series, 10 vistos y 2 puntos de reanudación al perfil
+  original. Sin el permiso la app sigue funcionando: solo ve las suyas, y lo dice.
 
 Por eso se escribe en **dos** sitios y se listan **dos** fuentes:
 
 | Destino | Sobrevive a desinstalar | La app lo puede leer |
 |---|---|---|
-| `Download/AnimeAV1/` (MediaStore) | **Sí** — es el respaldo de verdad | Solo dentro de la misma instalación |
+| `Download/AnimeAV1/` (MediaStore) | **Sí** — es el respaldo de verdad | Las suyas siempre; las de otra instalación **solo con acceso a todos los archivos** |
 | `Android/data/com.animeav1/files/backups/` (buzón) | No | **Siempre** |
 
 ⚠️ **El buzón lo tiene que crear la APP.** `BackupStore.list()` hace `mkdirs()` justo por esto: si el
@@ -737,8 +748,10 @@ borrada" y la fila reaparecería acto seguido; ahora dice cuál de las dos qued�
 se decide **volviendo a mirar** (`mediaEntries().none { … }`, `!file.exists()`), no por el valor que
 devolvió `delete()`: es lo único que puede afirmar "ahí ya no queda nada con ese nombre".
 
-⚠️ **En API ≤ 28 la copia pública se lista por ruta directa** (`Entry.Source.Public`), y eso no es un
-adorno: `mediaEntries` devuelve vacío por debajo de Q, así que antes **toda** copia salía etiquetada
+⚠️ **La copia pública se lista por ruta directa** (`Entry.Source.Public`) en API ≤ 28 **y** en API 30+
+con acceso a todos los archivos —ahí es el ÚNICO camino que ve las copias de instalaciones
+anteriores—. En API 29 no hay forma: ni permiso legacy ni "todos los archivos", así que solo ve las
+suyas. Y eso no es un adorno: `mediaEntries` devuelve vacío por debajo de Q, así que antes **toda** copia salía etiquetada
 "solo en la app · se pierde al desinstalar" y el modal prometía no tocar Descargas… mientras el
 borrado sí la borraba. Etiqueta, aviso y efecto decían tres cosas distintas y se cumplía la
 destructiva. Va detrás de `WRITE_EXTERNAL_STORAGE`, igual que exportar: **lo que no se puede listar
@@ -763,8 +776,9 @@ la pantalla se quedaba sin ningún aro. Al borrar, `focusBefore` se anula **ante
 modal: `RecyclerView` recicla esa misma `View` para otra entrada, así que restaurarla habría puesto
 el foco sobre un fichero distinto del que el usuario tenía.
 
-Flujo real para restaurar tras reinstalar: abrir la pantalla Copia una vez (crea el buzón) → dejar el
-JSON ahí (`adb push`) → volver a la pantalla → aparece en la lista → Fusionar.
+Flujo real para restaurar tras reinstalar: abrir Copia de seguridad → **VER TODAS LAS COPIAS** →
+conceder el acceso en Ajustes → BACK → la copia aparece en la lista → Fusionar. (Antes de tener ese
+permiso el único camino era `adb push` del JSON al buzón, que en una TV no es un camino.)
 
 ⚠️ **Restaurar tras reinstalar deja un perfil DUPLICADO, y hay que saberlo.** Ensayado entero en el
 emulador con el APK publicado (exportar → desinstalar → instalar → restaurar): los datos vuelven
