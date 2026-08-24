@@ -394,7 +394,8 @@ class SeriesFragment : Fragment() {
             // pasó con los chips en su día: no había forma de llegar al episodio 101 en adelante
             // (reproducido con One Piece). Desde el buscador se sigue bajando a chips o rejilla,
             // que se recablea en `renderEpisodes` según haya filtro.
-            val firstBelow = R.id.ep_search
+            val firstBelow = if (view.findViewById<View>(R.id.btn_ep_block)?.isVisible == true)
+                R.id.btn_ep_block else R.id.ep_search
             val below = if (truncated) R.id.btn_synopsis_more else firstBelow
             cont?.nextFocusDownId = below
             view.findViewById<View>(R.id.btn_favorite)?.nextFocusDownId = below
@@ -622,43 +623,55 @@ class SeriesFragment : Fragment() {
         val shown = if (searching) ordered.filter { it.number.toString().startsWith(episodeQuery) }
                     else blocks[episodeBlockIndex]
 
-        val blocksRow = view.findViewById<RecyclerView>(R.id.episode_blocks)
-        val showChips = !searching && blocks.size > 1
-        blocksRow.visibility = if (showChips) View.VISIBLE else View.GONE
-        if (showChips) {
-            // ⚠️ `RowLayoutManager` y no un LinearLayoutManager pelado: IZQ/DER en los extremos se
-            // quedan en la fila. Sin esto, DERECHA en el último chip se iba a una tarjeta de
-            // *Series relacionadas*, al otro extremo de la página (comprobado con One Piece), y
-            // desde allí ya no había vuelta.
-            if (blocksRow.layoutManager == null) blocksRow.layoutManager = RowLayoutManager(requireContext())
-            val labels = blocks.map { it.first().number to it.last().number }
-            val blockAdapter = EpisodeBlockAdapter(labels, upFocusId = R.id.ep_search) { index ->
-                // Elegido a mano: se muestra el bloque desde su principio, no se salta a mitad.
-                episodeBlockIndex = index
-                renderEpisodes(view, series)
-            }
-            blocksRow.adapter = blockAdapter
-            blockAdapter.select(episodeBlockIndex)
-            // ⚠️ Seleccionar el chip no lo trae a la vista: con 24 bloques la fila se quedaba en el
-            // chip 0 y el único resaltado estaba fuera de pantalla, así que parecía que no había
-            // ninguno elegido.
-            if (bringChipIntoView) blocksRow.scrollToPosition(episodeBlockIndex)
+        // Selector de rango: una parada de foco en vez de una fila de N chips. Se esconde si la
+        // serie cabe en un bloque, y también mientras hay filtro (ver arriba).
+        val blockBtn = view.findViewById<Button>(R.id.btn_ep_block)
+        val showBlocks = !searching && blocks.size > 1
+        blockBtn.visibility = if (showBlocks) View.VISIBLE else View.GONE
+        if (showBlocks) {
+            val (from, to) = blocks[episodeBlockIndex].let { it.first().number to it.last().number }
+            blockBtn.text = getString(R.string.episodes_block_label, "$from-$to")
+            blockBtn.setOnClickListener { showBlockPicker(view, series, blocks) }
         }
 
         val empty = view.findViewById<TextView>(R.id.ep_search_empty)
         empty.visibility = if (searching && shown.isEmpty()) View.VISIBLE else View.GONE
         if (empty.isVisible) empty.text = getString(R.string.episodes_search_empty, episodeQuery)
 
-        // ABAJO desde la cabecera va a lo primero que haya debajo, que cambia con el filtro.
-        val below = if (showChips) R.id.episode_blocks else R.id.episodes_recycler
-        view.findViewById<EditText>(R.id.ep_search).nextFocusDownId = below
-        view.findViewById<Button>(R.id.btn_ep_sort).nextFocusDownId = below
+        // Toda la cabecera baja a la rejilla: ya no hay fila de chips en medio.
+        view.findViewById<EditText>(R.id.ep_search).nextFocusDownId = R.id.episodes_recycler
+        view.findViewById<Button>(R.id.btn_ep_sort).nextFocusDownId = R.id.episodes_recycler
+        blockBtn.nextFocusDownId = R.id.episodes_recycler
 
-        fillEpisodeGrid(view, series, shown, showChips)
+        fillEpisodeGrid(view, series, shown, showBlocks)
+    }
+
+    /**
+     * Lista de rangos, con el actual marcado. Mismo diálogo de una sola elección que los filtros del
+     * catálogo: en una TV la lista sí aterriza el foco sola (al contrario que un diálogo de solo
+     * botones, que lo deja en el `buttonPanel` y parece colgado).
+     */
+    private fun showBlockPicker(view: View, series: Series, blocks: List<List<EpisodeRef>>) {
+        val labels = blocks.map { "${it.first().number}-${it.last().number}" }.toTypedArray()
+        AlertDialog.Builder(requireContext(), android.R.style.Theme_Material_Dialog_Alert)
+            .setTitle(R.string.episodes_block_title)
+            .setSingleChoiceItems(labels, episodeBlockIndex) { dialog, which ->
+                dialog.dismiss()
+                if (which == episodeBlockIndex) return@setSingleChoiceItems
+                episodeBlockIndex = which
+                renderEpisodes(view, series)
+                // El foco vuelve al selector, que es de donde salió: sin esto se queda en la ventana
+                // del diálogo que acaba de morir y Android lo reasigna a lo primero que encuentre.
+                view.findViewById<Button>(R.id.btn_ep_block)?.post {
+                    view.findViewById<Button>(R.id.btn_ep_block)?.requestFocus()
+                }
+            }
+            .setNegativeButton(getString(R.string.cancel), null)
+            .show()
     }
 
     /** Rellena la rejilla con los episodios que toque. */
-    private fun fillEpisodeGrid(view: View, series: Series, shown: List<EpisodeRef>, chipsVisible: Boolean) {
+    private fun fillEpisodeGrid(view: View, series: Series, shown: List<EpisodeRef>, blockPicker: Boolean) {
         val watched = localVm.watchedEpisodes.value
         val columns = EPISODE_COLUMNS
         episodeAdapter = EpisodeGridAdapter(
@@ -682,10 +695,9 @@ class SeriesFragment : Fragment() {
                                else R.id.episode_tile,
             // Subir desde la primera fila de tiles lleva a los chips si los hay; si no, a la
             // portada. Sin esto, los chips también eran inalcanzables desde abajo.
-            // Subir desde la primera fila lleva a los chips si los hay y, si no, al buscador, que
-            // es lo que queda justo encima. Sin esto, ni los chips ni la cabecera eran alcanzables
-            // desde abajo.
-            upFocusId        = if (chipsVisible) R.id.episode_blocks else R.id.ep_search
+            // Subir desde la primera fila lleva al selector de rango si lo hay y, si no, al
+            // buscador. Sin decirlo, la cabecera entera era inalcanzable desde abajo.
+            upFocusId        = if (blockPicker) R.id.btn_ep_block else R.id.ep_search
         )
         val recycler = view.findViewById<RecyclerView>(R.id.episodes_recycler)
         recycler.layoutManager = GridLayoutManager(requireContext(), columns)

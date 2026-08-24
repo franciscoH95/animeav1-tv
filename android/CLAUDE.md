@@ -1109,15 +1109,13 @@ izquierdo + rejilla derecha).
   build, y hace bien.
 - **Sección 3**: relacionadas, escondida entera (`relations_section`) cuando no las hay — no sus
   piezas sueltas, o queda un divisor y un rótulo colgando al final de la página.
-- ⚠️ **Los chips de bloque están DENTRO de la cadena de foco**, y eso hay que decirlo a mano. Lo
-  primero que hay debajo de la portada no siempre es la rejilla: en las series largas hay antes una
-  fila de chips, y apuntando la portada directamente a `episodes_recycler` los chips quedaban
-  **inalcanzables por arriba y por abajo** — o sea, no había forma de llegar al episodio 101 en
-  adelante (reproducido con One Piece, 1175 episodios). Se resuelve en tiempo de ejecución
-  (`isVisible` de `episode_blocks`) porque los chips solo existen por encima de `EPISODES_PER_BLOCK`.
-  ⚠️ La fila de chips usa `RowLayoutManager` y no un `LinearLayoutManager` pelado: DERECHA en el
-  último chip se iba a una tarjeta de *Series relacionadas*, al otro extremo de la página, y de allí
-  ya no se volvía.
+- ⚠️ **La cabecera de episodios está DENTRO de la cadena de foco**, y eso hay que decirlo a mano. Lo
+  primero que hay debajo de la portada no es la rejilla: es la fila de controles (selector de rango,
+  buscador y orden). Apuntando la portada directamente a `episodes_recycler`, esa fila queda
+  **inalcanzable por arriba y por abajo** — es exactamente lo que pasó con los chips de bloque en su
+  día: no había forma de llegar al episodio 101 en adelante (reproducido con One Piece). Se resuelve
+  en tiempo de ejecución (`isVisible` de `btn_ep_block`), porque el selector solo existe por encima
+  de `EPISODES_PER_BLOCK`.
 - ⚠️ **La cadena de foco es vertical y va cableada**: ARRIBA desde la primera fila de tiles va a
   "Reproducir" (`EpisodeGridAdapter.upFocusId`, como el `upFocusId` del Horario) porque entre medias
   hay una sección entera y `FocusFinder` decide por distancia; ABAJO desde la fila de acciones va al
@@ -1177,9 +1175,14 @@ El detalle de serie tiene botón **"Continuar"**
 (foco por defecto) que salta al primer episodio no visto. El diálogo de un episodio ofrece **"Marcar
 como visto (y anteriores)"** —`markWatchedThrough`, la opción por defecto— y **"Marcar solo este
 episodio"** como escape para quien quiera dejar un hueco a propósito (un especial suelto).
-La **rejilla de episodios** se parte en bloques de `EPISODES_PER_BLOCK` (**50**) con una fila de chips
-(`EpisodeBlockAdapter`) que solo aparece si hay más de uno — One Piece son 1172 tiles, ~235
-pulsaciones de ABAJO para llegar al final. Al abrir la ficha se muestra el bloque que contiene el
+La **rejilla de episodios** se parte en bloques de `EPISODES_PER_BLOCK` (**50**) y se elige el rango
+con un **selector** (`btn_ep_block` → diálogo de una sola elección), que solo aparece si hay más de un
+bloque — One Piece son 1175 tiles, ~235 pulsaciones de ABAJO para llegar al final. ⚠️ Antes era una
+**fila de chips**: con 24 bloques eran 24 paradas de D-pad en horizontal para llegar al último, y al
+volver arriba desde la rejilla el foco caía en un chip cualquiera (el `RecyclerView` se lo da al
+primer hijo adjunto, no al seleccionado). El selector es una sola parada, la lista se recorre como
+los filtros del catálogo y al elegir se le devuelve el foco a mano — si no, se queda en la ventana
+del diálogo que acaba de morir. Al abrir la ficha se muestra el bloque que contiene el
 **primer episodio no visto**, no el primero. Cada tile lleva una barra de progreso
 (`episode_progress` de ese perfil, vía `LocalRepository.progressForSeries`) y el siguiente a ver va
 marcado.
@@ -1204,15 +1207,15 @@ lo último no quiere empezar por el episodio 1.
 - ⚠️ **Los bloques son trozos de la lista YA ORDENADA, no rangos fijos de números.** En descendente
   el primer chip es `1175-1126`, que es justo a lo que va quien pide ese orden; con rangos fijos,
   pedir "descendente" te dejaba igualmente en el 1-50, solo que del revés. Por eso
-  `EpisodeBlockAdapter` recibe **pares** `(primero, último)` y no `IntRange`: un `IntRange` con
-  `first > last` está **vacío** en Kotlin, así que ni se etiquetaba ni casaba con ningún episodio.
+  las etiquetas se arman con el primero y el último de cada trozo y **no** con un `IntRange`: uno con
+  `first > last` está **vacío** en Kotlin, así que ni etiquetaba ni casaba con ningún episodio.
 - ⚠️ `allNumbers` del `EpisodeGridAdapter` va **siempre ascendente**, aunque la rejilla se enseñe del
   revés: de ahí sale "el siguiente a ver", que es el primer episodio SIN VER de la serie. Pasándolo
   en el orden de pantalla, en descendente la marca caía en el último episodio.
 - **Buscar manda sobre los bloques**: se filtra por prefijo sobre TODA la serie (escribir `84` saca
   849, 848, 847…), no dentro del bloque visible, que es lo que espera quien escribe un número. Por
-  eso los chips se esconden mientras hay filtro: seguirían marcando un bloque que no es lo que hay
-  debajo. Sin coincidencias sale un rótulo propio: una rejilla vacía y muda parece la app rota.
+  eso el selector de rango se esconde mientras hay filtro: seguiría anunciando un bloque que no es
+  lo que hay debajo. Sin coincidencias sale un rótulo propio: una rejilla vacía y muda parece la app rota.
 - ⚠️ El **OK del teclado lo cierra** (misma lección que el editor de perfil): mientras está puesto se
   come el D-pad y no se llega ni a los chips ni a la rejilla.
 - ⚠️ **La cadena de foco cambió**: lo primero que hay debajo de la portada ya no es la rejilla ni los
@@ -1236,11 +1239,7 @@ vistos mostraba "✓ 700 / 100") y el índice al que se hace scroll (el del bloq
 índice global el scroll caía fuera de rango en los bloques 2..N y se descartaba en silencio).
 ⚠️ El **progreso vive en el fragment** (`progressMap`), no solo dentro del adapter: cambiar de bloque
 crea un adapter nuevo y el Flow de Room no reemite mientras nadie escriba, así que las barras
-desaparecían para el resto de la sesión al tocar un chip. Y seleccionar el chip del bloque inicial no
-lo trae a la vista: hace falta `scrollToPosition`, o el único chip resaltado queda fuera de pantalla.
-⚠️ La fila de chips tiene altura **fija** (38 dp, la del chip): con `wrap_content` el lint
-`InvalidSetHasFixedSize` rompe la build (`abortOnError=true`) porque no sabe que scrollea en
-horizontal.
+desaparecían para el resto de la sesión al cambiar de rango.
 **Series relacionadas** (`item_relation_card`): sigue la misma convención que el resto de tarjetas
 —póster arriba, distintivos SOBRE el póster, título debajo sobre el fondo de la tarjeta,
 `card_focus_bg`—. Antes tenía un lenguaje propio: el texto en una caja oscura pegada al póster y a

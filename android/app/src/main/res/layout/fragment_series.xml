@@ -304,6 +304,25 @@
                         android:textStyle="bold"
                         android:text="@string/header_episodes" />
 
+                    <!-- Selector de rango. Antes era una FILA DE CHIPS: con 24 bloques (One Piece)
+                         eran 24 paradas de D-pad en horizontal para llegar al último, y al volver
+                         arriba desde la rejilla el foco caía en un chip cualquiera. Un selector es
+                         una parada, y la lista se recorre igual que los filtros del catálogo. -->
+                    <Button
+                        android:id="@+id/btn_ep_block"
+                        android:layout_width="wrap_content"
+                        android:layout_height="40dp"
+                        android:textSize="13sp"
+                        android:textColor="@color/text_primary"
+                        android:background="@drawable/card_focus_bg"
+                        android:paddingHorizontal="16dp"
+                        android:focusable="true"
+                        android:nextFocusUp="@id/btn_continue"
+                        android:nextFocusLeft="@id/btn_ep_block"
+                        android:nextFocusRight="@id/ep_search"
+                        android:layout_marginEnd="8dp"
+                        android:visibility="gone" />
+
                     <!-- Buscar un episodio por su número. En una serie de 1172 capítulos, ir a
                          saltos de bloque para llegar al 847 son varias pulsaciones; escribirlo son
                          tres. ⚠️ `imeOptions=actionDone` + el listener del fragment para que el OK
@@ -326,6 +345,7 @@
                         android:importantForAutofill="no"
                         android:background="@drawable/card_focus_bg"
                         android:nextFocusUp="@id/btn_continue"
+                        android:nextFocusLeft="@id/btn_ep_block"
                         android:nextFocusRight="@id/btn_ep_sort"
                         android:layout_marginEnd="8dp" />
 
@@ -354,15 +374,6 @@
                         android:visibility="gone" />
                 </LinearLayout>
 
-                <androidx.recyclerview.widget.RecyclerView
-                    android:id="@+id/episode_blocks"
-                    android:layout_width="match_parent"
-                    android:layout_height="38dp"
-                    android:layout_marginBottom="10dp"
-                    android:focusable="true"
-                    android:descendantFocusability="afterDescendants"
-                    android:overScrollMode="never"
-                    android:visibility="gone" />
 
                 <!-- Cuando la búsqueda no casa con ningún episodio: sin esto la rejilla se queda
                      vacía y parece que la app se ha roto. -->

@@ -203,4 +203,6 @@
     <string name="episodes_sort_asc">↑ 1 → N</string>
     <string name="episodes_sort_desc">↓ N → 1</string>
     <string name="episodes_search_empty">Ningún episodio empieza por %1$s</string>
+    <string name="episodes_block_title">Episodios</string>
+    <string name="episodes_block_label">%1$s  ▾</string>
 </resources>
