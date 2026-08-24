@@ -1,0 +1,166 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/bg_dark">
+
+    <!-- Scroll propio (no un NestedScrollView pelado): ancla arriba la fila que recibe el foco.
+         Ver SectionScrollView — el desplazamiento mínimo de serie dejaba la fila enfocada pegada
+         al borde inferior, con el título de sus tarjetas cortado por el borde de la pantalla. -->
+    <com.animeav1.ui.SectionScrollView
+        android:id="@+id/home_scroll"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:clipToPadding="false"
+        android:paddingTop="@dimen/tv_safe_v"
+        android:paddingBottom="@dimen/tv_safe_v"
+        android:scrollbars="none">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical">
+
+            <!-- Continuar viendo -->
+            <LinearLayout
+                android:id="@+id/continue_section"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:layout_marginBottom="20dp"
+                android:visibility="gone">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="@string/home_continue"
+                    android:textColor="@color/text_primary"
+                    android:textSize="18sp"
+                    android:textStyle="bold"
+                    android:paddingStart="@dimen/tv_safe_h"
+                    android:layout_marginBottom="10dp" />
+
+                <androidx.recyclerview.widget.RecyclerView
+                    android:id="@+id/continue_recycler"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:paddingHorizontal="@dimen/tv_safe_h"
+                    android:paddingVertical="12dp"
+                    android:clipToPadding="false"
+                    android:focusable="true"
+                    android:descendantFocusability="afterDescendants"
+                    android:overScrollMode="never" />
+            </LinearLayout>
+
+            <!-- Mi lista · Viendo -->
+            <LinearLayout
+                android:id="@+id/viendo_section"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:layout_marginBottom="20dp"
+                android:visibility="gone">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="@string/home_viendo"
+                    android:textColor="@color/text_primary"
+                    android:textSize="18sp"
+                    android:textStyle="bold"
+                    android:paddingStart="@dimen/tv_safe_h"
+                    android:layout_marginBottom="10dp" />
+
+                <androidx.recyclerview.widget.RecyclerView
+                    android:id="@+id/viendo_recycler"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:paddingHorizontal="@dimen/tv_safe_h"
+                    android:paddingVertical="12dp"
+                    android:clipToPadding="false"
+                    android:focusable="true"
+                    android:descendantFocusability="afterDescendants"
+                    android:overScrollMode="never" />
+            </LinearLayout>
+
+            <!-- Mi lista · Por ver. Sin esta fila, alguien que solo hubiera guardado series para
+                 después veía "Aún no has empezado a ver nada": lo que había guardado no aparecía
+                 en ninguna parte de Inicio. -->
+            <LinearLayout
+                android:id="@+id/porver_section"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:layout_marginBottom="20dp"
+                android:visibility="gone">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="@string/home_porver"
+                    android:textColor="@color/text_primary"
+                    android:textSize="18sp"
+                    android:textStyle="bold"
+                    android:paddingStart="@dimen/tv_safe_h"
+                    android:layout_marginBottom="10dp" />
+
+                <androidx.recyclerview.widget.RecyclerView
+                    android:id="@+id/porver_recycler"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:paddingHorizontal="@dimen/tv_safe_h"
+                    android:paddingVertical="12dp"
+                    android:clipToPadding="false"
+                    android:focusable="true"
+                    android:descendantFocusability="afterDescendants"
+                    android:overScrollMode="never" />
+            </LinearLayout>
+
+            <!-- Filas de descubrimiento del catálogo. Se rellenan desde HomeFragment. -->
+            <LinearLayout
+                android:id="@+id/discovery_rows"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical" />
+        </LinearLayout>
+    </com.animeav1.ui.SectionScrollView>
+
+    <!-- Estado vacío ACCIONABLE. Antes era solo un TextView: como no había nada focusable, ABAJO
+         desde la pestaña era un no-op y el mando se quedaba atascado en la barra sin ninguna salida
+         visible. Ahora lleva un botón que es, además, lo único que un usuario nuevo puede hacer. -->
+    <LinearLayout
+        android:id="@+id/home_empty"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="center"
+        android:orientation="vertical"
+        android:gravity="center"
+        android:visibility="gone">
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:gravity="center"
+            android:drawableTop="@drawable/ic_empty"
+            android:drawablePadding="14dp"
+            android:text="@string/home_empty"
+            android:textColor="@color/text_secondary"
+            android:textSize="17sp" />
+
+        <Button
+            android:id="@+id/btn_home_explore"
+            android:layout_width="wrap_content"
+            android:layout_height="48dp"
+            android:layout_marginTop="22dp"
+            android:text="@string/home_explore"
+            android:textSize="14sp"
+            android:textColor="@color/text_primary"
+            android:background="@drawable/card_focus_bg"
+            android:paddingHorizontal="28dp"
+            android:focusable="true" />
+    </LinearLayout>
+
+</FrameLayout>

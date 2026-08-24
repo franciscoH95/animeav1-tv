@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="@dimen/home_card_width"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:focusable="true"
+    android:clickable="true"
+    android:background="@drawable/card_focus_bg"
+    android:padding="4dp">
+
+    <ImageView
+        android:id="@+id/home_poster"
+        android:layout_width="match_parent"
+        android:layout_height="@dimen/poster_card_height"
+        android:scaleType="centerCrop"
+        android:contentDescription="@null" />
+
+    <TextView
+        android:id="@+id/home_title"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:textColor="#DDDDDD"
+        android:textSize="13sp"
+        android:maxLines="2"
+        android:minLines="2"
+        android:ellipsize="end"
+        android:paddingTop="6dp"
+        android:paddingStart="2dp"
+        android:paddingEnd="2dp" />
+
+</LinearLayout>

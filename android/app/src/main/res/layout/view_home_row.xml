@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Fila de descubrimiento de Inicio. Se infla una por cada fila desde HomeFragment en vez de repetirla
+  en el XML: con <include> los ids de los hijos se duplicarían y findViewById dejaría de distinguirlos.
+-->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:layout_marginBottom="18dp">
+
+    <TextView
+        android:id="@+id/row_title"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:paddingStart="@dimen/tv_safe_h"
+        android:paddingEnd="@dimen/tv_safe_h"
+        android:layout_marginBottom="8dp"
+        android:textColor="@color/text_primary"
+        android:textSize="20sp"
+        android:textStyle="bold" />
+
+    <androidx.recyclerview.widget.RecyclerView
+        android:id="@+id/row_recycler"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:paddingStart="@dimen/tv_safe_h"
+        android:paddingEnd="@dimen/tv_safe_h"
+        android:paddingTop="12dp"
+        android:paddingBottom="12dp"
+        android:clipToPadding="false"
+        android:overScrollMode="never"
+        android:focusable="true"
+        android:descendantFocusability="afterDescendants" />
+
+    <!-- Huecos mientras carga ESTA fila. Va aparte del RecyclerView de contenido (y no cambiándole
+         el adapter) para que el pulso de alpha no se aplique nunca sobre las portadas de verdad. -->
+    <androidx.recyclerview.widget.RecyclerView
+        android:id="@+id/row_skeleton"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:paddingStart="@dimen/tv_safe_h"
+        android:paddingEnd="@dimen/tv_safe_h"
+        android:paddingTop="12dp"
+        android:paddingBottom="12dp"
+        android:clipToPadding="false"
+        android:overScrollMode="never"
+        android:focusable="false" />
+
+    <!-- Fallo de ESTA fila. Una fila que no responde no debe dejar Inicio en blanco, así que el
+         reintento es por fila y no global. -->
+    <Button
+        android:id="@+id/row_retry"
+        android:layout_width="wrap_content"
+        android:layout_height="44dp"
+        android:layout_marginStart="@dimen/tv_safe_h"
+        android:text="@string/retry"
+        android:textSize="13sp"
+        android:textColor="@color/text_primary"
+        android:background="@drawable/card_focus_bg"
+        android:paddingHorizontal="24dp"
+        android:focusable="true"
+        android:visibility="gone" />
+</LinearLayout>

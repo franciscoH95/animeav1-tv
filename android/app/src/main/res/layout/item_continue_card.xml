@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="130dp"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:focusable="true"
+    android:clickable="true"
+    android:background="@drawable/card_focus_bg"
+    android:padding="4dp">
+
+    <FrameLayout
+        android:layout_width="match_parent"
+        android:layout_height="@dimen/poster_card_height">
+
+        <ImageView
+            android:id="@+id/continue_cover"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:scaleType="centerCrop"
+            android:contentDescription="@null" />
+
+        <ProgressBar
+            android:id="@+id/continue_progress"
+            style="?android:attr/progressBarStyleHorizontal"
+            android:layout_width="match_parent"
+            android:layout_height="4dp"
+            android:layout_gravity="bottom"
+            android:max="100"
+            android:progressTint="@color/accent"
+            android:progressBackgroundTint="#66000000" />
+    </FrameLayout>
+
+    <TextView
+        android:id="@+id/continue_title"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:textColor="#DDDDDD"
+        android:textSize="13sp"
+        android:maxLines="1"
+        android:ellipsize="end"
+        android:paddingTop="6dp"
+        android:paddingStart="2dp"
+        android:paddingEnd="2dp" />
+
+    <TextView
+        android:id="@+id/continue_ep"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:textColor="@color/text_secondary"
+        android:textSize="11sp"
+        android:maxLines="1"
+        android:paddingStart="2dp"
+        android:paddingTop="1dp" />
+
+</LinearLayout>

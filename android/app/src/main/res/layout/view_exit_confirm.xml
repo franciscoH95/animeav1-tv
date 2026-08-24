@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Confirmación de salida, compartida por las DOS pantallas desde las que BACK cierra la app
+  (MainActivity y el selector de perfiles). Se incluye con <include>, así que hay una sola copia:
+  dos overlays iguales acabarían divergiendo, que es la clase de duplicación que este proyecto ya ha
+  pagado antes.
+
+  Overlay propio y no un AlertDialog, igual que el resto de modales de la app: el foco por D-pad es
+  predecible. Debe ser el ÚLTIMO hijo de un FrameLayout para quedar por encima del contenido.
+-->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/exit_overlay"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:gravity="center"
+    android:background="#E6000000"
+    android:clickable="true"
+    android:focusable="false"
+    android:visibility="gone">
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="@string/exit_title"
+        android:textColor="#FFFFFF"
+        android:textSize="20sp"
+        android:textStyle="bold" />
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="@string/exit_subtitle"
+        android:textColor="@color/text_secondary"
+        android:textSize="13sp"
+        android:gravity="center"
+        android:layout_marginTop="8dp"
+        android:layout_marginBottom="26dp" />
+
+    <LinearLayout
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal">
+
+        <Button
+            android:id="@+id/btn_exit_confirm"
+            android:layout_width="wrap_content"
+            android:layout_height="48dp"
+            android:text="@string/exit_confirm"
+            android:textSize="14sp"
+            android:textColor="@color/text_primary"
+            android:background="@drawable/card_focus_bg"
+            android:paddingHorizontal="28dp"
+            android:focusable="true"
+            android:layout_marginEnd="12dp" />
+
+        <Button
+            android:id="@+id/btn_exit_cancel"
+            android:layout_width="wrap_content"
+            android:layout_height="48dp"
+            android:text="@string/cancel"
+            android:textSize="14sp"
+            android:textColor="@color/text_primary"
+            android:background="@drawable/card_focus_bg"
+            android:paddingHorizontal="28dp"
+            android:focusable="true" />
+    </LinearLayout>
+</LinearLayout>

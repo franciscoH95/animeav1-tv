@@ -1,0 +1,190 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- FrameLayout exterior SOLO para poder poner el overlay de "¿cerrar la app?" por encima del
+     contenido. No cambia nada de la disposición: el LinearLayout de dentro sigue siendo el mismo. -->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/bg_dark">
+
+    <LinearLayout
+        android:id="@+id/main_content"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:orientation="vertical">
+
+    <!-- Tab bar -->
+    <LinearLayout
+        android:id="@+id/tab_bar"
+        android:layout_width="match_parent"
+        android:layout_height="52dp"
+        android:orientation="horizontal"
+        android:background="#1A1A1A"
+        android:paddingStart="@dimen/tv_safe_h"
+        android:paddingEnd="@dimen/tv_safe_h"
+        android:gravity="center_vertical">
+
+        <Button
+            android:id="@+id/tab_home"
+            style="@style/Widget.AppCompat.Button.Borderless"
+            android:layout_width="wrap_content"
+            android:layout_height="40dp"
+            android:text="@string/tab_home"
+            android:drawableStart="@drawable/ic_home"
+            android:drawablePadding="8dp"
+            android:textColor="@drawable/tab_text_color"
+            android:background="@drawable/tab_background"
+            android:paddingStart="20dp"
+            android:paddingEnd="20dp"
+            android:textSize="14sp"
+            android:focusable="true"
+            android:nextFocusDown="@id/fragment_container"
+            android:layout_marginEnd="8dp" />
+
+        <Button
+            android:id="@+id/tab_catalog"
+            style="@style/Widget.AppCompat.Button.Borderless"
+            android:layout_width="wrap_content"
+            android:layout_height="40dp"
+            android:text="@string/tab_catalog"
+            android:drawableStart="@drawable/ic_catalog"
+            android:drawablePadding="8dp"
+            android:textColor="@drawable/tab_text_color"
+            android:background="@drawable/tab_background"
+            android:paddingStart="20dp"
+            android:paddingEnd="20dp"
+            android:textSize="14sp"
+            android:focusable="true"
+            android:nextFocusDown="@id/fragment_container"
+            android:layout_marginEnd="8dp" />
+
+        <Button
+            android:id="@+id/tab_schedule"
+            style="@style/Widget.AppCompat.Button.Borderless"
+            android:layout_width="wrap_content"
+            android:layout_height="40dp"
+            android:text="@string/tab_schedule"
+            android:drawableStart="@drawable/ic_schedule"
+            android:drawablePadding="8dp"
+            android:textColor="@drawable/tab_text_color"
+            android:background="@drawable/tab_background"
+            android:paddingStart="20dp"
+            android:paddingEnd="20dp"
+            android:textSize="14sp"
+            android:focusable="true"
+            android:nextFocusDown="@id/fragment_container"
+            android:layout_marginEnd="8dp" />
+
+        <Button
+            android:id="@+id/tab_mylist"
+            style="@style/Widget.AppCompat.Button.Borderless"
+            android:layout_width="wrap_content"
+            android:layout_height="40dp"
+            android:text="@string/tab_mylist"
+            android:drawableStart="@drawable/ic_list"
+            android:drawablePadding="8dp"
+            android:textColor="@drawable/tab_text_color"
+            android:background="@drawable/tab_background"
+            android:paddingStart="20dp"
+            android:paddingEnd="20dp"
+            android:textSize="14sp"
+            android:focusable="true"
+            android:nextFocusDown="@id/fragment_container" />
+
+        <View
+            android:layout_width="0dp"
+            android:layout_height="1dp"
+            android:layout_weight="1" />
+
+        <!-- Acciones globales, a la derecha del hueco. NO son pestañas: quedan fuera de `tabTags` /
+             `lastFocus[]` / `isTabButton`, así que la maquinaria de secciones no se entera de ellas.
+             Antes buscar solo existía dentro del Catálogo (dos pantallas de distancia desde Inicio) y
+             tres de las cuatro pestañas no decían con qué perfil estabas. -->
+        <Button
+            android:id="@+id/action_search"
+            style="@style/Widget.AppCompat.Button.Borderless"
+            android:layout_width="wrap_content"
+            android:layout_height="40dp"
+            android:text="@string/search"
+            android:drawableStart="@drawable/ic_search"
+            android:drawablePadding="8dp"
+            android:textColor="@drawable/tab_text_color"
+            android:background="@drawable/tab_background"
+            android:paddingStart="16dp"
+            android:paddingEnd="16dp"
+            android:textSize="14sp"
+            android:focusable="true"
+            android:nextFocusDown="@id/fragment_container" />
+
+        <!-- Avatar del perfil. Es el último focusable de la barra, así que `nextFocusRight` apunta
+             a sí mismo: sin eso, DERECHA no encontraba nada a la derecha (el reloj no es focusable)
+             y `FocusFinder` se llevaba el foco ABAJO, a una tarjeta del contenido — una pulsación
+             hacia la derecha acababa fuera de la barra.
+             ⚠️ El aro de foco va en ESTE contenedor y no en el círculo: el
+             círculo se tiñe con `setColorFilter` (SRC_IN) para tomar el color del perfil, así que
+             un trazo dentro del mismo drawable saldría del mismo color y no se vería. El
+             contenedor mide 40dp —lo mismo que las pestañas y BUSCAR— para que el aro rodee al
+             círculo sin cambiar el alto de la barra. -->
+        <FrameLayout
+            android:id="@+id/action_profile"
+            android:layout_width="40dp"
+            android:layout_height="40dp"
+            android:layout_marginStart="12dp"
+            android:background="@drawable/avatar_focus_ring"
+            android:focusable="true"
+            android:nextFocusDown="@id/fragment_container"
+            android:nextFocusRight="@id/action_profile">
+
+            <TextView
+                android:id="@+id/action_profile_avatar"
+                android:layout_width="32dp"
+                android:layout_height="32dp"
+                android:layout_gravity="center"
+                android:gravity="center"
+                android:textColor="#FFFFFF"
+                android:textSize="14sp"
+                android:textStyle="bold"
+                android:background="@drawable/profile_avatar_bg"
+                android:focusable="false"
+                android:duplicateParentState="true" />
+        </FrameLayout>
+
+        <!-- Reloj. Una TV no tiene barra de estado, así que la hora no está en ninguna parte del
+             sistema: mirar qué hora es obligaba a salir de la app.
+
+             `TextClock` y no una TextView con un Handler propio: se suscribe él solo a
+             ACTION_TIME_TICK / TIME_CHANGED / TIMEZONE_CHANGED, y solo mientras está pegado a la
+             ventana — nada que arrancar ni que cancelar en el ciclo de vida (esta app ya ha pagado
+             varias veces el precio de los loops que sobreviven a su vista).
+
+             Los dos formatos a la vez: `TextClock` elige uno según el ajuste de 12/24 h del aparato,
+             así que respeta lo que el usuario tenga puesto sin preguntar nada. Sin segundos a
+             propósito: con segundos el tick pasa a ser de 1 s en vez de por minuto.
+
+             ⚠️ NO focusable: no hace nada al pulsarla, y en la cadena del D-pad de la barra
+             (BUSCAR → avatar) sería una parada muerta a la derecha del todo. -->
+        <TextClock
+            android:id="@+id/action_clock"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="16dp"
+            android:format12Hour="h:mm a"
+            android:format24Hour="H:mm"
+            android:textColor="@color/text_secondary"
+            android:textSize="14sp"
+            android:focusable="false" />
+
+    </LinearLayout>
+
+    <!-- Fragment content. NOT focusable itself: with an empty/loading section the container
+         would take the focus with no visible focus state (the tab keeps it instead). -->
+    <FrameLayout
+        android:id="@+id/fragment_container"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:descendantFocusability="afterDescendants" />
+    </LinearLayout>
+
+    <include layout="@layout/view_exit_confirm" />
+</FrameLayout>
+
