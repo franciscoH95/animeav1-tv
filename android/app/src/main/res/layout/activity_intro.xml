@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Presentación de arranque ("vanity card"), al estilo de las que ponen las plataformas antes del
+  contenido. Se ve una vez por arranque y se puede saltar con cualquier tecla (ver IntroActivity).
+
+  Las dos líneas arrancan con `alpha="0"`: la animación las trae. Así, si por lo que fuera la
+  animación no llegara a correr, no se quedaría un fotograma a medias en pantalla.
+-->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/intro_root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/bg_dark">
+
+    <!-- ⚠️ El contenedor ocupa TODA la pantalla y centra su contenido; no es `wrap_content`.
+         Envolviendo justo al texto, sus límites eran los del rótulo, y como un ViewGroup recorta a
+         cada hijo a los suyos, la animación de entrada —que empieza al 1,10 de escala— se cortaba
+         por los cuatro lados: se veía un corte recto en la "D" y en la "K" hasta que la escala
+         llegaba a 1. Medido a media animación: 1482 px de ancho cuando tocaban ~1546, y el borde
+         izquierdo saltando de 18 a 71 de brillo en un píxel en vez de degradar.
+         Ocupando la pantalla entera, la escala tiene todo el sitio que necesita y no hace falta
+         tocar ningún `clipChildren`. -->
+    <LinearLayout
+        android:id="@+id/intro_block"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:orientation="vertical"
+        android:gravity="center">
+
+        <TextView
+            android:id="@+id/intro_name"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/intro_name"
+            android:textColor="@color/accent"
+            android:textSize="72sp"
+            android:textStyle="bold"
+            android:letterSpacing="0.18"
+            android:alpha="0" />
+
+        <TextView
+            android:id="@+id/intro_presents"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/intro_presents"
+            android:textColor="@color/text_secondary"
+            android:textSize="22sp"
+            android:letterSpacing="0.42"
+            android:layout_marginTop="10dp"
+            android:alpha="0" />
+    </LinearLayout>
+
+</FrameLayout>
