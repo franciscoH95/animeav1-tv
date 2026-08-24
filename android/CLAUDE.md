@@ -759,6 +759,17 @@ el foco sobre un fichero distinto del que el usuario tenía.
 Flujo real para restaurar tras reinstalar: abrir la pantalla Copia una vez (crea el buzón) → dejar el
 JSON ahí (`adb push`) → volver a la pantalla → aparece en la lista → Fusionar.
 
+⚠️ **Restaurar tras reinstalar deja un perfil DUPLICADO, y hay que saberlo.** Ensayado entero en el
+emulador con el APK publicado (exportar → desinstalar → instalar → restaurar): los datos vuelven
+completos —5 series, 10 vistos y 2 puntos de reanudación, con su uuid original— pero **no** al perfil
+con el que arranca la app. Una instalación limpia crea su propio "Principal" con un uuid nuevo, así
+que el "Principal" de la copia no casa con él y `importAll` lo crea al lado: quedan dos perfiles con
+el mismo nombre, el vacío activo y el restaurado con todo. Hay que **elegir el restaurado en el
+selector** (y borrar el vacío). No es pérdida de datos, pero visto desde el sofá parece exactamente
+eso. Si algún día molesta, el arreglo con menos riesgo es adoptar en el import un perfil existente
+del mismo nombre **solo si está completamente vacío**: sin filas no hay nada que se pueda fusionar
+mal, que es lo que el uuid existe para evitar.
+
 ### 3. Que la reinstalación no haga falta
 
 - **`fallbackToDestructiveMigration()` solo en debug** (`isDebuggable(context)`). En release, si falta
