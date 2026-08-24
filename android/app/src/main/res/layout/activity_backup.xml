@@ -1,0 +1,233 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/bg_dark">
+
+    <!-- `clipToPadding="false"` para que la lista de ficheros —más ancha que esta caja a
+         propósito, ver abajo— no se recorte por el margen de seguridad. `clipChildren` se queda
+         como está (true): es lo que mantiene a cada hijo dentro de sus propios límites. -->
+    <LinearLayout
+        android:id="@+id/backup_content"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:orientation="vertical"
+        android:clipToPadding="false"
+        android:paddingStart="@dimen/tv_safe_h"
+        android:paddingEnd="@dimen/tv_safe_h"
+        android:paddingTop="@dimen/tv_safe_v"
+        android:paddingBottom="@dimen/tv_safe_v">
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/backup_title"
+            android:textColor="@color/text_primary"
+            android:textSize="20sp"
+            android:textStyle="bold"
+            android:layout_marginBottom="4dp" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/backup_subtitle"
+            android:textColor="@color/text_secondary"
+            android:textSize="12sp"
+            android:layout_marginBottom="20dp" />
+
+        <!-- Exportar -->
+        <Button
+            android:id="@+id/btn_export"
+            android:layout_width="wrap_content"
+            android:layout_height="48dp"
+            android:text="@string/backup_export"
+            android:textSize="14sp"
+            android:textColor="@color/text_primary"
+            android:background="@drawable/card_focus_bg"
+            android:paddingHorizontal="28dp"
+            android:focusable="true" />
+
+        <TextView
+            android:id="@+id/export_status"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:textColor="@color/accent_light"
+            android:textSize="12sp"
+            android:layout_marginTop="10dp"
+            android:visibility="gone" />
+
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="1dp"
+            android:background="@color/accent_line"
+            android:layout_marginTop="22dp"
+            android:layout_marginBottom="18dp" />
+
+        <!-- Importar -->
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/backup_import_header"
+            android:textColor="@color/text_primary"
+            android:textSize="15sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/import_hint"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:textColor="@color/text_secondary"
+            android:textSize="11sp"
+            android:layout_marginTop="4dp"
+            android:layout_marginBottom="12dp" />
+
+        <!-- ⚠️ Los márgenes negativos van AQUÍ y no en la lista: un hijo se recorta por los límites
+             de su padre, así que con la lista ensanchada dentro de un FrameLayout de ancho normal
+             volvía a cortarse en el mismo sitio (comprobado). Ensanchando el contenedor, la lista
+             cabe entera. El texto de "no hay ficheros" va centrado, y como los dos márgenes son
+             iguales sigue centrado. -->
+        <FrameLayout
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1"
+            android:layout_marginStart="-12dp"
+            android:layout_marginEnd="-12dp">
+
+            <!-- ⚠️ El padding de la lista compensa el margen negativo del contenedor: las filas
+                 siguen exactamente donde estaban, pero ahora tienen hueco donde crecer. Es lo que
+                 necesita la animación de foco (aquí escala 1.02 sobre una fila de ancho completo,
+                 que son ~35 px de ancho en total, ~17 por lado): sin él, la fila enfocada se cortaba en el borde de la
+                 lista y se quedaba **sin los lados del aro de foco** —solo se veía el trazo de
+                 arriba y el de abajo—. El vertical (~2 px) se arregla igual con 4dp. Misma pareja
+                 padding/margen que la fila de *Series relacionadas*. -->
+            <androidx.recyclerview.widget.RecyclerView
+                android:id="@+id/backup_list"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:paddingStart="12dp"
+                android:paddingEnd="12dp"
+                android:paddingTop="4dp"
+                android:paddingBottom="4dp"
+                android:clipToPadding="false"
+                android:overScrollMode="never"
+                android:descendantFocusability="afterDescendants"
+                android:focusable="false" />
+
+            <TextView
+                android:id="@+id/list_empty"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity="center"
+                android:text="@string/backup_import_empty"
+                android:textColor="@color/text_secondary"
+                android:textSize="13sp"
+                android:gravity="center"
+                android:visibility="gone" />
+        </FrameLayout>
+
+        <!-- Pista del gesto: en una TV, mantener pulsado no se descubre solo. Mismo patrón que el rótulo del
+             selector de perfiles ("Pulsa para elegir · Mantén pulsado para editar"). -->
+        <TextView
+            android:id="@+id/list_hint"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:text="@string/backup_actions_hint"
+            android:textColor="@color/text_secondary"
+            android:textSize="11sp"
+            android:gravity="center"
+            android:visibility="gone" />
+    </LinearLayout>
+
+    <!-- Confirmación de importación. Overlay propio en lugar de un AlertDialog: el foco por D-pad
+         es predecible y sigue el mismo patrón que los modales del reproductor. -->
+    <LinearLayout
+        android:id="@+id/confirm_overlay"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:orientation="vertical"
+        android:gravity="center"
+        android:background="#CC000000"
+        android:clickable="true"
+        android:visibility="gone">
+
+        <!-- El mismo overlay sirve para las dos preguntas (restaurar / borrar): un segundo overlay
+             obligaría a ampliar el `dispatchKeyEvent` que consume BACK y duplicaría el bloqueo de
+             foco. El título y los botones cambian según el modo. -->
+        <TextView
+            android:id="@+id/confirm_title"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/backup_confirm_title"
+            android:textColor="#FFFFFF"
+            android:textSize="18sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/confirm_detail"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:textColor="@color/text_secondary"
+            android:textSize="13sp"
+            android:gravity="center"
+            android:layout_marginTop="8dp"
+            android:layout_marginBottom="22dp" />
+
+        <LinearLayout
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal">
+
+            <Button
+                android:id="@+id/btn_merge"
+                android:layout_width="wrap_content"
+                android:layout_height="46dp"
+                android:text="@string/backup_merge"
+                android:textSize="13sp"
+                android:textColor="@color/text_primary"
+                android:background="@drawable/card_focus_bg"
+                android:paddingHorizontal="22dp"
+                android:focusable="true"
+                android:layout_marginEnd="10dp" />
+
+            <Button
+                android:id="@+id/btn_replace"
+                android:layout_width="wrap_content"
+                android:layout_height="46dp"
+                android:text="@string/backup_replace"
+                android:textSize="13sp"
+                android:textColor="@color/text_primary"
+                android:background="@drawable/card_focus_bg"
+                android:paddingHorizontal="22dp"
+                android:focusable="true"
+                android:layout_marginEnd="10dp" />
+
+            <!-- Solo aparece en el modo borrar. ⚠️ En ese modo, Fusionar y Sustituir se esconden:
+                 así el recuento y la posición de los botones cambian y el reflejo "CENTRO otra vez"
+                 no cae donde caía al restaurar. -->
+            <Button
+                android:id="@+id/btn_delete"
+                android:layout_width="wrap_content"
+                android:layout_height="46dp"
+                android:text="@string/backup_delete"
+                android:textSize="13sp"
+                android:textColor="@color/text_primary"
+                android:background="@drawable/card_focus_bg"
+                android:paddingHorizontal="22dp"
+                android:focusable="true"
+                android:layout_marginEnd="10dp"
+                android:visibility="gone" />
+
+            <Button
+                android:id="@+id/btn_cancel_import"
+                android:layout_width="wrap_content"
+                android:layout_height="46dp"
+                android:text="@string/cancel"
+                android:textSize="13sp"
+                android:textColor="@color/text_primary"
+                android:background="@drawable/card_focus_bg"
+                android:paddingHorizontal="22dp"
+                android:focusable="true" />
+        </LinearLayout>
+    </LinearLayout>
+</FrameLayout>
