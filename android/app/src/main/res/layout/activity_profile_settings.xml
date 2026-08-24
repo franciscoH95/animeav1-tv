@@ -1,0 +1,91 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Ajustes del perfil activo. Se abre desde el avatar de la barra global.
+
+  Aquí viven las acciones que antes estaban metidas en la cabecera de Mi Lista (el nombre del perfil
+  y "Copia"): son acciones de la APP, no de una sección, y ocupaban sitio en una fila cuyo trabajo es
+  elegir sub-lista.
+
+  Lista vertical y no una rejilla: son dos acciones y con un mando ARRIBA/ABAJO es la navegación más
+  corta posible.
+-->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/bg_dark">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_gravity="center"
+        android:orientation="vertical"
+        android:gravity="center_horizontal"
+        android:paddingStart="@dimen/tv_safe_h"
+        android:paddingEnd="@dimen/tv_safe_h">
+
+        <!-- Quién eres. El nombre del perfil se movió aquí desde Mi Lista: sigue estando a la vista,
+             pero en la pantalla que habla del perfil. -->
+        <TextView
+            android:id="@+id/settings_avatar"
+            android:layout_width="96dp"
+            android:layout_height="96dp"
+            android:gravity="center"
+            android:textSize="34sp"
+            android:textStyle="bold"
+            android:textColor="#FFFFFF"
+            android:background="@drawable/profile_avatar_bg"
+            android:layout_marginBottom="14dp" />
+
+        <TextView
+            android:id="@+id/settings_name"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:textColor="@color/text_primary"
+            android:textSize="22sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/settings_subtitle"
+            android:textColor="@color/text_secondary"
+            android:textSize="12sp"
+            android:gravity="center"
+            android:layout_marginTop="6dp"
+            android:layout_marginBottom="30dp" />
+
+        <Button
+            android:id="@+id/settings_profiles"
+            style="@style/Widget.AppCompat.Button.Borderless"
+            android:layout_width="420dp"
+            android:layout_height="60dp"
+            android:text="@string/settings_profiles"
+            android:textSize="15sp"
+            android:textColor="@color/text_primary"
+            android:background="@drawable/card_focus_bg"
+            android:gravity="center_vertical"
+            android:drawableStart="@drawable/ic_person"
+            android:drawablePadding="16dp"
+            android:paddingStart="24dp"
+            android:paddingEnd="24dp"
+            android:layout_marginBottom="12dp"
+            android:focusable="true" />
+
+        <Button
+            android:id="@+id/settings_backup"
+            style="@style/Widget.AppCompat.Button.Borderless"
+            android:layout_width="420dp"
+            android:layout_height="60dp"
+            android:text="@string/settings_backup"
+            android:textSize="15sp"
+            android:textColor="@color/text_primary"
+            android:background="@drawable/card_focus_bg"
+            android:gravity="center_vertical"
+            android:drawableStart="@drawable/ic_backup"
+            android:drawablePadding="16dp"
+            android:paddingStart="24dp"
+            android:paddingEnd="24dp"
+            android:focusable="true" />
+    </LinearLayout>
+
+</FrameLayout>

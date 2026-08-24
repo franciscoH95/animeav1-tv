@@ -1,0 +1,155 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/bg_dark">
+
+    <LinearLayout
+        android:id="@+id/profiles_content"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:orientation="vertical"
+        android:gravity="center">
+
+        <TextView
+            android:id="@+id/profiles_title"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/profiles_title"
+            android:textColor="@color/text_primary"
+            android:textSize="22sp"
+            android:textStyle="bold"
+            android:layout_marginBottom="6dp" />
+
+        <TextView
+            android:id="@+id/profiles_hint"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/profiles_hint"
+            android:textColor="@color/text_secondary"
+            android:textSize="12sp"
+            android:gravity="center"
+            android:layout_marginBottom="28dp" />
+
+        <!-- clipToPadding=false para que la escala de foco no se recorte en los bordes. -->
+        <androidx.recyclerview.widget.RecyclerView
+            android:id="@+id/profiles_list"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:paddingHorizontal="@dimen/tv_safe_h"
+            android:paddingTop="12dp"
+            android:paddingBottom="12dp"
+            android:clipToPadding="false"
+            android:overScrollMode="never"
+            android:focusable="true"
+            android:descendantFocusability="afterDescendants" />
+
+        <TextView
+            android:id="@+id/profiles_actions_hint"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/profiles_actions_hint"
+            android:textColor="@color/text_secondary"
+            android:textSize="11sp"
+            android:gravity="center"
+            android:layout_marginTop="22dp" />
+    </LinearLayout>
+
+    <!-- Editor: crear o renombrar. Overlay propio (no AlertDialog) para que el foco por D-pad sea
+         predecible, igual que en el reproductor y en la pantalla de copias. -->
+    <LinearLayout
+        android:id="@+id/editor_overlay"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:orientation="vertical"
+        android:gravity="center"
+        android:background="#E6000000"
+        android:visibility="gone">
+
+        <TextView
+            android:id="@+id/editor_title"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:textColor="#FFFFFF"
+            android:textSize="18sp"
+            android:textStyle="bold"
+            android:layout_marginBottom="16dp" />
+
+        <EditText
+            android:id="@+id/editor_name"
+            android:layout_width="360dp"
+            android:layout_height="52dp"
+            android:hint="@string/profile_name_hint"
+            android:textColor="@color/text_primary"
+            android:textColorHint="@color/text_secondary"
+            android:textSize="16sp"
+            android:paddingStart="16dp"
+            android:paddingEnd="16dp"
+            android:singleLine="true"
+            android:inputType="textPersonName"
+            android:imeOptions="actionDone"
+            android:maxLength="20"
+            android:background="@drawable/card_focus_bg"
+            android:importantForAutofill="no" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/profile_color"
+            android:textColor="@color/text_secondary"
+            android:textSize="12sp"
+            android:layout_marginTop="20dp"
+            android:layout_marginBottom="10dp" />
+
+        <androidx.recyclerview.widget.RecyclerView
+            android:id="@+id/color_list"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:focusable="true"
+            android:descendantFocusability="afterDescendants" />
+
+        <LinearLayout
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:layout_marginTop="26dp">
+
+            <Button
+                android:id="@+id/btn_editor_save"
+                android:layout_width="wrap_content"
+                android:layout_height="46dp"
+                android:text="@string/profile_save"
+                android:textSize="13sp"
+                android:textColor="@color/text_primary"
+                android:background="@drawable/card_focus_bg"
+                android:paddingHorizontal="24dp"
+                android:focusable="true"
+                android:layout_marginEnd="10dp" />
+
+            <Button
+                android:id="@+id/btn_editor_delete"
+                android:layout_width="wrap_content"
+                android:layout_height="46dp"
+                android:text="@string/profile_delete"
+                android:textSize="13sp"
+                android:textColor="@color/text_primary"
+                android:background="@drawable/card_focus_bg"
+                android:paddingHorizontal="24dp"
+                android:focusable="true"
+                android:layout_marginEnd="10dp" />
+
+            <Button
+                android:id="@+id/btn_editor_cancel"
+                android:layout_width="wrap_content"
+                android:layout_height="46dp"
+                android:text="@string/cancel"
+                android:textSize="13sp"
+                android:textColor="@color/text_primary"
+                android:background="@drawable/card_focus_bg"
+                android:paddingHorizontal="24dp"
+                android:focusable="true" />
+        </LinearLayout>
+    </LinearLayout>
+
+    <include layout="@layout/view_exit_confirm" />
+</FrameLayout>
