@@ -43,11 +43,21 @@ import java.io.File
 internal object BackupStore {
 
     /** Subcarpeta dentro de Descargas, para no soltar ficheros sueltos en la raíz. */
-    private const val DIR_PUBLIC = "AnimeAV1"
+    /** Subcarpeta de Descargas donde la app escribe sus copias. */
+    const val DIR_PUBLIC = "AnimeAV1"
     private const val DIR_INBOX  = "backups"
     private const val MIME       = "application/json"
     /** Prefijo de los ficheros que escribe esta app; también es el filtro al listarlos. */
     private const val NAME_PREFIX = "animeav1-"
+
+    /** Subcarpetas de Descargas que se recorren buscando copias. 2 = `Download/loquesea/…`. */
+    private const val SCAN_MAX_DEPTH = 2
+
+    /** Tope de `.json` examinados en ese recorrido: la pantalla no puede tardar en abrir. */
+    private const val SCAN_MAX_FILES = 400
+
+    /** Por encima de esto no se abre para mirar si es una copia: la nuestra son unos pocos KB. */
+    private const val MAX_BACKUP_BYTES = 8L * 1024 * 1024
 
     /**
      * Un fichero de backup que la app **puede leer** (o sea, importable). Puede estar en varios
@@ -94,12 +104,32 @@ internal object BackupStore {
             else                   -> Location.INBOX_ONLY
         }
 
+        /**
+         * La escribió esta app (nombre `animeav1-…json`).
+         *
+         * Lo de fuera se puede **importar pero no borrar**: la app no destruye ficheros que no ha
+         * creado, y con nombres libres "borrar por nombre" podría llevarse el que no era.
+         */
+        val isOurs: Boolean get() = name.startsWith(NAME_PREFIX) && name.endsWith(".json")
+
+        /**
+         * Carpeta donde vive, relativa a Descargas ("AnimeAV1", "Telegram", "" si está suelta en la
+         * raíz), o null si solo se conoce por MediaStore. Es lo que le dice al usuario CUÁL de las
+         * dos copias con el mismo nombre está mirando.
+         */
+        val downloadsFolder: String? get() =
+            sources.filterIsInstance<Source.Public>().firstOrNull()?.file?.parentFile?.let { dir ->
+                @Suppress("DEPRECATION")
+                val root = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
+                if (dir.absolutePath == root.absolutePath) "" else dir.name
+            }
+
         sealed class Source {
             /** Buzón de la app (`getExternalFilesDir`). */
             data class Local(val file: File) : Source()
             /** Descargas por MediaStore (API 29+). */
             data class Media(val uri: Uri) : Source()
-            /** Descargas por ruta directa (API ≤ 28). */
+            /** Descargas por ruta directa: API ≤ 28, y API 30+ con acceso a todos los archivos. */
             data class Public(val file: File) : Source()
         }
     }
@@ -174,10 +204,14 @@ internal object BackupStore {
         (inboxEntries(context) + mediaEntries(context) + publicFileEntries(context))
             // AGRUPAR, no `distinctBy`: una copia normal está en los dos sitios y las dos
             // procedencias tienen que sobrevivir hasta [delete] (ver el KDoc de [Entry.sources]).
-            .groupBy { it.name }
-            .map { (name, found) ->
+            // ⚠️ Por nombre Y TAMAÑO. Agrupar solo por nombre unía la copia del buzón con su gemela
+            // de Descargas —que es lo que se busca—, pero desde que se listan ficheros con nombre
+            // libre, dos copias distintas de dos carpetas pueden llamarse igual y se fundirían en
+            // una fila que al restaurar abriría cualquiera de las dos.
+            .groupBy { it.name to it.sizeBytes }
+            .map { (key, found) ->
                 Entry(
-                    name = name,
+                    name = key.first,
                     // El buzón va primero, y su `lastModified` tiene precisión de milisegundo
                     // mientras que el de MediaStore viene redondeado a segundos.
                     sizeBytes = found.first().sizeBytes,
@@ -192,10 +226,12 @@ internal object BackupStore {
         // `adb push` (o cualquier otro proceso) queda a nombre de ese usuario y la app se come un
         // "Permission denied" al leer dentro — comprobado en el emulador.
         val dir = File(context.getExternalFilesDir(null), DIR_INBOX).apply { mkdirs() }
-        // Mismo filtro por nombre que `mediaEntries`: solo lo que escribió esta app. Aceptar
-        // cualquier *.json convertía un fichero suelto dejado ahí en una "copia restaurable".
+        // Nombre nuestro o contenido nuestro (ver [looksLikeBackup]): al buzón llegan ficheros
+        // traídos a mano, y exigir el nombre exacto dejaba fuera una copia perfectamente válida que
+        // alguien había renombrado. Aceptar cualquier `.json` sí sería mentir, y por eso se mira
+        // dentro.
         val files = dir.listFiles { f: File ->
-            f.isFile && f.name.startsWith(NAME_PREFIX) && f.name.endsWith(".json")
+            f.isFile && f.name.endsWith(".json", ignoreCase = true) && looksLikeBackup(f)
         } ?: return emptyList()
         return files.map {
             Entry(it.name, it.length(), it.lastModified(), listOf(Entry.Source.Local(it)))
@@ -273,23 +309,75 @@ internal object BackupStore {
     private fun publicFileEntries(context: Context): List<Entry> {
         if (!canAccessPublicDir(context)) return emptyList()
         @Suppress("DEPRECATION")
-        val dir = File(
-            Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS), DIR_PUBLIC
-        )
-        val files = dir.listFiles { f: File ->
-            f.isFile && f.name.startsWith(NAME_PREFIX) && f.name.endsWith(".json")
-        } ?: return emptyList()
-        return files.map {
+        val downloads = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
+        return scanForBackups(downloads).map {
             Entry(it.name, it.length(), it.lastModified(), listOf(Entry.Source.Public(it)))
         }
     }
 
     /**
-     * Si el proceso puede tocar la carpeta pública de Descargas por ruta.
+     * Busca copias en **toda** la carpeta de Descargas, no solo en [DIR_PUBLIC].
      *
-     * Solo aplica a API ≤ 28 (en Q+ manda MediaStore y no hace falta permiso). En 21-22 el permiso
-     * se concede al instalar; de 23 a 28 es de ejecución, y `BackupActivity` ya lo pide antes de
-     * exportar.
+     * ⚠️ Mirar únicamente `Download/AnimeAV1/` daba por inexistente cualquier copia que el usuario
+     * hubiera dejado suelta en Descargas —bajada de un correo, copiada desde un USB o traída de otro
+     * aparato— y en una TV **no hay explorador de ficheros** con el que ir a buscarla: la copia
+     * estaba ahí y no había forma de llegar a ella.
+     *
+     * Se recorre hasta [SCAN_MAX_DEPTH] niveles y se examinan como mucho [SCAN_MAX_FILES] ficheros:
+     * una carpeta de Descargas puede tener miles y esto corre al abrir la pantalla.
+     */
+    private fun scanForBackups(root: File): List<File> {
+        val out = mutableListOf<File>()
+        var examined = 0
+
+        fun walk(dir: File, depth: Int) {
+            if (depth > SCAN_MAX_DEPTH || examined >= SCAN_MAX_FILES) return
+            val children = dir.listFiles() ?: return
+            for (f in children) {
+                if (examined >= SCAN_MAX_FILES) return
+                if (f.isDirectory) walk(f, depth + 1)
+                else if (f.name.endsWith(".json", ignoreCase = true)) {
+                    examined++
+                    if (looksLikeBackup(f)) out += f
+                }
+            }
+        }
+
+        walk(root, 0)
+        return out
+    }
+
+    /**
+     * ¿Este `.json` es una copia de ESTA app?
+     *
+     * Si el nombre es el nuestro se acepta sin abrirlo. Si no, se miran los primeros bytes: el
+     * formato empieza por `{"format":N,"app":"com.animeav1",…}`, así que la marca está en la
+     * cabecera y no hace falta leer —ni parsear— el fichero entero.
+     *
+     * ⚠️ Se comprueba el CONTENIDO y no solo el nombre porque el usuario puede haber renombrado la
+     * copia, y al revés: un `.json` cualquiera que alguien dejó en Descargas no es una copia y
+     * ofrecerlo para restaurar sería mentir. El tope de tamaño evita abrir ficheros enormes.
+     */
+    private fun looksLikeBackup(file: File): Boolean {
+        if (file.name.startsWith(NAME_PREFIX) && file.name.endsWith(".json")) return true
+        if (file.length() !in 1..MAX_BACKUP_BYTES) return false
+        return runCatching {
+            file.inputStream().use { input ->
+                val head = ByteArray(512)
+                val n = input.read(head)
+                n > 0 && String(head, 0, n, Charsets.UTF_8).contains(BackupCodec.APP_ID)
+            }
+        }.getOrDefault(false)
+    }
+
+    /**
+     * Si el proceso puede tocar la carpeta pública de Descargas **por ruta**, que es la única forma
+     * de ver las copias que no escribió esta instalación (MediaStore solo devuelve las suyas).
+     *
+     * - API ≤ 22: el permiso se concede al instalar.
+     * - API 23-28: `WRITE_EXTERNAL_STORAGE` de ejecución, que `BackupActivity` ya pide para exportar.
+     * - API 29: no hay forma; se queda con las suyas.
+     * - API 30+: `MANAGE_EXTERNAL_STORAGE`, que se concede en Ajustes (ver [allFilesAccessIntent]).
      */
     private fun canAccessPublicDir(context: Context): Boolean = when {
         Build.VERSION.SDK_INT < Build.VERSION_CODES.M -> true
@@ -437,6 +525,11 @@ internal object BackupStore {
      */
     private fun deleteFromPublicPath(context: Context, name: String): Boolean {
         if (!canAccessPublicDir(context)) return false
+        // ⚠️ Solo se borra lo que escribió la app. Desde que se listan también copias con OTRO
+        // nombre —las que el usuario dejó sueltas en Descargas—, borrar "por nombre" podría
+        // llevarse un fichero que la app no creó y que quizá esté en dos carpetas a la vez. Lo
+        // ajeno se importa, no se borra: quien lo dejó ahí sabe dónde está.
+        if (!name.startsWith(NAME_PREFIX)) return false
         return runCatching {
             for (entry in publicFileEntries(context).filter { it.name == name }) {
                 for (source in entry.sources.filterIsInstance<Entry.Source.Public>()) {

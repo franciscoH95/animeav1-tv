@@ -209,4 +209,5 @@
     <string name="backup_hint_no_access">Faltan por ver las copias que dejó una instalación anterior de la app: Android no deja leerlas sin permiso. Dáselo y aparecerán aquí.</string>
     <string name="backup_hint_full_access">Se listan las copias de Descargas y las de la carpeta de la app.</string>
     <string name="backup_no_settings">Este aparato no tiene esa pantalla de ajustes</string>
+    <string name="backup_foreign_no_delete">Esta copia no la creó la app, así que no la borra. Bórrala desde donde la dejaste.</string>
 </resources>

@@ -222,6 +222,9 @@ class BackupActivity : FragmentActivity() {
     private fun askDelete(entry: BackupStore.Entry) {
         if (busy) { toast(getString(R.string.backup_busy)); return }
         if (confirmOverlay.visibility == View.VISIBLE) return
+        // La app no borra ficheros que no ha escrito ella: se pueden importar, pero quien los dejó
+        // en Descargas sabe dónde están y puede tenerlos ahí por otra razón.
+        if (!entry.isOurs) { toast(getString(R.string.backup_foreign_no_delete)); return }
         pending = entry
         confirmTitle.setText(R.string.backup_delete_title)
         confirmDetail.text = getString(

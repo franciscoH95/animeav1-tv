@@ -776,6 +776,26 @@ la pantalla se quedaba sin ningún aro. Al borrar, `focusBefore` se anula **ante
 modal: `RecyclerView` recicla esa misma `View` para otra entrada, así que restaurarla habría puesto
 el foco sobre un fichero distinto del que el usuario tenía.
 
+⚠️ **Se busca en TODA la carpeta de Descargas, no solo en `Download/AnimeAV1/`.** Mirar únicamente
+la subcarpeta de la app daba por inexistente cualquier copia que el usuario hubiera dejado suelta
+—bajada de un correo, traída de un USB o de otro aparato— y en una TV **no hay explorador de
+ficheros** con el que ir a buscarla: la copia estaba ahí y no había forma de llegar a ella. Se
+recorren hasta 2 niveles de subcarpetas y como mucho 400 `.json` (la pantalla no puede tardar en
+abrir).
+
+⚠️ Y se acepta por **contenido**, no solo por nombre: si el nombre no es `animeav1-…json`, se leen
+los primeros 512 bytes y se busca la marca `com.animeav1` —el formato empieza por
+`{"format":N,"app":"com.animeav1",…}`, así que está en la cabecera—. Sin eso, una copia renombrada
+quedaba fuera; aceptando cualquier `.json` se ofrecería para restaurar un fichero que no lo es. Mismo
+criterio en el buzón, que es donde caen los ficheros traídos a mano.
+
+⚠️ Lo ajeno **se importa pero no se borra**: la app no destruye ficheros que no ha escrito ella, y
+con nombres libres "borrar por nombre" podría llevarse el que no era. El mantenido pulsado sobre una
+copia ajena lo dice y no abre el modal. Por lo mismo, `list()` agrupa por nombre **y tamaño**: dos
+copias distintas de dos carpetas pueden llamarse igual y se fundirían en una fila que al restaurar
+abriría cualquiera de las dos. La fila dice la carpeta cuando no es la de la app ("Solo en
+Descargas/Telegram").
+
 Flujo real para restaurar tras reinstalar: abrir Copia de seguridad → **VER TODAS LAS COPIAS** →
 conceder el acceso en Ajustes → BACK → la copia aparece en la lista → Fusionar. (Antes de tener ese
 permiso el único camino era `adb push` del JSON al buzón, que en una TV no es un camino.)

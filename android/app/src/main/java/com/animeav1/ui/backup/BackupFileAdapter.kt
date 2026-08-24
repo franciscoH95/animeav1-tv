@@ -44,11 +44,21 @@ internal class BackupFileAdapter(
         val entry = items[position]
         val ctx = holder.itemView.context
         holder.name.text = entry.name
+        // Dónde vive. Para una copia traída a mano se dice la CARPETA, porque puede haber dos con
+        // el mismo nombre en sitios distintos y si no las filas salen idénticas. Se añade a la
+        // frase de ubicación en vez de como un trozo suelto: "Solo en Descargas · suelta en
+        // Descargas" era decir dos veces lo mismo.
+        val folder = entry.downloadsFolder
+        val where = ctx.getString(locationLabel(entry)).let { label ->
+            if (entry.location == BackupStore.Location.DOWNLOADS_ONLY &&
+                !folder.isNullOrEmpty() && folder != BackupStore.DIR_PUBLIC
+            ) "$label/$folder" else label
+        }
         holder.meta.text = ctx.getString(
             R.string.backup_file_meta,
             BackupFormat.dateTime(entry.lastModified),
             BackupFormat.size(entry.sizeBytes),
-            ctx.getString(locationLabel(entry))
+            where
         )
         // ⚠️ Reset explícito de la animación de foco: aquí se rebindean vistas RECICLADAS, y una que
         // venía enfocada conserva su escala y su lift de Z. Sin esto, tras borrar una fila queda
