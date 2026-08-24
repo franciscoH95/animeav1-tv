@@ -8,13 +8,20 @@ import androidx.recyclerview.widget.RecyclerView
 import com.animeav1.R
 
 /**
- * Chips de bloque de episodios ("1-100", "101-200"…) para series largas.
+ * Chips de bloque de episodios ("1-50", "51-100"…) para series largas.
  *
  * Reutiliza el layout del chip de filtro del catálogo para que se vean iguales; el propio proyecto ya
  * usa ese fondo para "una opción de una barra horizontal".
  */
 internal class EpisodeBlockAdapter(
-    private val blocks: List<IntRange>,
+    /**
+     * Primer y último episodio de cada bloque, **en el orden en que se muestran**.
+     *
+     * ⚠️ Un par y no un `IntRange`: con el orden descendente el bloque va de 1172 a 1123 y un
+     * `IntRange` con `first > last` está VACÍO en Kotlin, así que ni se etiquetaba ni casaba con
+     * ningún episodio.
+     */
+    private val blocks: List<Pair<Int, Int>>,
     /**
      * A dónde va ARRIBA desde un chip. Se dice a mano porque encima está el bloque de la portada,
      * cuya columna de texto empieza más a la derecha que la fila de chips: por geometría,
@@ -32,8 +39,8 @@ internal class EpisodeBlockAdapter(
         VH(LayoutInflater.from(parent.context).inflate(R.layout.item_episode_block, parent, false))
 
     override fun onBindViewHolder(holder: VH, position: Int) {
-        val r = blocks[position]
-        holder.label.text = if (r.first == r.last) "${r.first}" else "${r.first}-${r.last}"
+        val (from, to) = blocks[position]
+        holder.label.text = if (from == to) "$from" else "$from-$to"
         holder.itemView.isSelected = position == selected
         holder.itemView.nextFocusUpId = upFocusId
         holder.itemView.nextFocusDownId = R.id.episodes_recycler

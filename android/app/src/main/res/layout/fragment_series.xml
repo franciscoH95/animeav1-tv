@@ -304,6 +304,47 @@
                         android:textStyle="bold"
                         android:text="@string/header_episodes" />
 
+                    <!-- Buscar un episodio por su número. En una serie de 1172 capítulos, ir a
+                         saltos de bloque para llegar al 847 son varias pulsaciones; escribirlo son
+                         tres. ⚠️ `imeOptions=actionDone` + el listener del fragment para que el OK
+                         del teclado lo CIERRE: mientras está puesto se come el D-pad y no se puede
+                         bajar a la rejilla. -->
+                    <EditText
+                        android:id="@+id/ep_search"
+                        android:layout_width="132dp"
+                        android:layout_height="40dp"
+                        android:hint="@string/episodes_search_hint"
+                        android:textColor="@color/text_primary"
+                        android:textColorHint="@color/text_secondary"
+                        android:textSize="13sp"
+                        android:paddingStart="12dp"
+                        android:paddingEnd="12dp"
+                        android:singleLine="true"
+                        android:inputType="number"
+                        android:maxLength="5"
+                        android:imeOptions="actionDone"
+                        android:importantForAutofill="no"
+                        android:background="@drawable/card_focus_bg"
+                        android:nextFocusUp="@id/btn_continue"
+                        android:nextFocusRight="@id/btn_ep_sort"
+                        android:layout_marginEnd="8dp" />
+
+                    <!-- Orden de la rejilla. La etiqueta dice a dónde va, no dónde está. -->
+                    <Button
+                        android:id="@+id/btn_ep_sort"
+                        android:layout_width="wrap_content"
+                        android:layout_height="40dp"
+                        android:text="@string/episodes_sort_asc"
+                        android:textSize="12sp"
+                        android:textColor="@color/text_primary"
+                        android:background="@drawable/card_focus_bg"
+                        android:paddingHorizontal="14dp"
+                        android:focusable="true"
+                        android:nextFocusUp="@id/btn_continue"
+                        android:nextFocusLeft="@id/ep_search"
+                        android:nextFocusRight="@id/btn_ep_sort"
+                        android:layout_marginEnd="12dp" />
+
                     <TextView
                         android:id="@+id/watched_counter"
                         android:layout_width="wrap_content"
@@ -321,6 +362,18 @@
                     android:focusable="true"
                     android:descendantFocusability="afterDescendants"
                     android:overScrollMode="never"
+                    android:visibility="gone" />
+
+                <!-- Cuando la búsqueda no casa con ningún episodio: sin esto la rejilla se queda
+                     vacía y parece que la app se ha roto. -->
+                <TextView
+                    android:id="@+id/ep_search_empty"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:textColor="@color/text_secondary"
+                    android:textSize="13sp"
+                    android:paddingVertical="18dp"
+                    android:gravity="center"
                     android:visibility="gone" />
 
                 <!-- ⚠️ Alto ACOTADO desde el fragment (ver `fitGridHeight`): crece con el contenido

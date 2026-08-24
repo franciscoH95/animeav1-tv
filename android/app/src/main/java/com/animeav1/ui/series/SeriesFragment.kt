@@ -7,7 +7,12 @@ import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.content.Context
+import android.view.KeyEvent
+import android.view.inputmethod.EditorInfo
+import android.view.inputmethod.InputMethodManager
 import android.widget.Button
+import android.widget.EditText
 import android.widget.ImageButton
 import android.widget.LinearLayout
 import android.widget.ImageView
@@ -29,6 +34,7 @@ import coil.load
 import com.animeav1.R
 import com.animeav1.data.AiringSchedule
 import com.animeav1.data.local.ListType
+import androidx.core.widget.doAfterTextChanged
 import com.animeav1.data.model.EpisodeRef
 import com.animeav1.data.model.Series
 import com.animeav1.ui.player.PlayerActivity
@@ -85,9 +91,25 @@ class SeriesFragment : Fragment() {
     /** Columnas si aún no se conoce el ancho (red de seguridad). */
     private val EPISODE_COLUMNS_FALLBACK = 6
 
-    /** Tamaño de bloque de la rejilla de episodios. 100 = 20 filas de 5, unas 4 pantallas de D-pad. */
-    private val EPISODES_PER_BLOCK = 100
+    /**
+     * Tamaño de bloque de la rejilla de episodios.
+     *
+     * 50 y no 100: con los tiles enseñando el fotograma del capítulo, 100 son el doble de filas y
+     * bajar un bloque entero con el mando se hacía largo. A cambio hay más chips, que se recorren en
+     * horizontal y son mucho más baratos de cruzar.
+     */
+    private val EPISODES_PER_BLOCK = 50
     private var currentSeries: Series? = null
+
+    // ── Estado de la rejilla de episodios ────────────────────────────────────────
+    /** Orden de la rejilla. Manda sobre TODO: los bloques son trozos de la lista ya ordenada. */
+    private var episodesDescending = false
+
+    /** Filtro por número de episodio. Vacío = se enseña el bloque elegido. */
+    private var episodeQuery = ""
+
+    /** Bloque visible. Índice sobre la lista ya ordenada, no un rango de números. */
+    private var episodeBlockIndex = 0
 
     /** Last Series instance fully bound: the sticky StateFlow re-emits it on every return to
      *  STARTED (e.g. coming back from the player) and a full re-bind would steal focus to
@@ -270,36 +292,12 @@ class SeriesFragment : Fragment() {
         // (`abortOnError=true`), y hace bien.
         recycler.addItemDecorationOnce(GridSpacingDecoration(8))
 
-        // Bloques solo en series largas: por debajo del umbral la rejilla completa se recorre bien y
-        // una fila de chips sería ruido.
-        val blocks = blocksFor(series.episodes.map { it.number })
-        val blocksRow = view.findViewById<RecyclerView>(R.id.episode_blocks)
-        if (blocks.size > 1) {
-            blocksRow.visibility = View.VISIBLE
-            // ⚠️ `RowLayoutManager` y no un LinearLayoutManager pelado: IZQ/DER en los extremos se
-            // quedan en la fila. Sin esto, DERECHA en el último chip se iba a una tarjeta de
-            // *Series relacionadas*, al otro extremo de la página (comprobado con One Piece), y
-            // desde allí ya no había vuelta.
-            blocksRow.layoutManager = RowLayoutManager(requireContext())
-            val blockAdapter = EpisodeBlockAdapter(blocks, upFocusId = R.id.btn_continue) { index ->
-                // Elegido a mano: se muestra el bloque desde su principio, no se salta a mitad.
-                showEpisodeBlock(view, series, blocks[index])
-            }
-            blocksRow.adapter = blockAdapter
-            // Arrancar en el bloque del episodio que toca ver, no en el primero: en una serie de 1000
-            // episodios el usuario está por el 700 y no quiere empezar por el 1.
-            val next = series.episodes.firstOrNull { it.number !in localVm.watchedEpisodes.value }?.number
-            val startIndex = blocks.indexOfFirst { next != null && next in it }.coerceAtLeast(0)
-            blockAdapter.select(startIndex)
-            // ⚠️ Seleccionar el chip no lo trae a la vista: con 12 bloques la fila se quedaba en el
-            // chip 0 y el único resaltado estaba fuera de pantalla, así que parecía que no había
-            // ninguno elegido.
-            blocksRow.scrollToPosition(startIndex)
-            showEpisodeBlock(view, series, blocks[startIndex])
-        } else {
-            blocksRow.visibility = View.GONE
-            showEpisodeBlock(view, series, null)
-        }
+        setupEpisodeControls(view, series)
+        // Arrancar en el bloque del episodio que toca ver, no en el primero: en una serie de 1000
+        // episodios el usuario está por el 700 y no quiere empezar por el 1.
+        episodeBlockIndex = initialBlockIndex(series)
+        renderEpisodes(view, series, bringChipIntoView = true)
+
         // Counter: update now that the adapter (and its itemCount) is ready
         updateWatchedCounter(view, localVm.watchedEpisodes.value)
 
@@ -382,13 +380,13 @@ class SeriesFragment : Fragment() {
             // Orden en pantalla: acciones → sinopsis → "Leer más" → rejilla. Así que lo que cambia
             // según haya botón o no es ABAJO desde la fila de acciones; ARRIBA desde ellas siempre
             // va a "Volver". (Con el diseño anterior, en dos columnas, era justo al revés.)
-            // ⚠️ Lo primero que hay debajo de la portada NO siempre es la rejilla: en las series
-            // largas hay antes una fila de chips de bloque, y apuntando directo a la rejilla los
-            // chips quedaban **inalcanzables** — no había forma de llegar al episodio 101 en
-            // adelante (reproducido con One Piece). Se resuelve en tiempo de ejecución porque los
-            // chips solo existen por encima de EPISODES_PER_BLOCK.
-            val firstBelow = if (view.findViewById<View>(R.id.episode_blocks)?.isVisible == true)
-                R.id.episode_blocks else R.id.episodes_recycler
+            // ⚠️ Lo primero que hay debajo de la portada es la CABECERA de episodios (buscador y
+            // orden), no la rejilla. Apuntando directo a los tiles, ni el buscador ni el botón de
+            // orden ni los chips de bloque serían alcanzables bajando — que es exactamente lo que
+            // pasó con los chips en su día: no había forma de llegar al episodio 101 en adelante
+            // (reproducido con One Piece). Desde el buscador se sigue bajando a chips o rejilla,
+            // que se recablea en `renderEpisodes` según haya filtro.
+            val firstBelow = R.id.ep_search
             val below = if (truncated) R.id.btn_synopsis_more else firstBelow
             cont?.nextFocusDownId = below
             view.findViewById<View>(R.id.btn_favorite)?.nextFocusDownId = below
@@ -536,18 +534,123 @@ class SeriesFragment : Fragment() {
             .show()
     }
 
+    /** Los episodios en el orden en que se enseñan ahora mismo. */
+    private fun orderedEpisodes(series: Series): List<EpisodeRef> =
+        if (episodesDescending) series.episodes.sortedByDescending { it.number }
+        else series.episodes.sortedBy { it.number }
+
     /**
-     * Parte los episodios en bloques de [EPISODES_PER_BLOCK]. Devuelve una sola entrada (y por tanto
-     * no se muestran chips) si la serie cabe entera en un bloque.
+     * Parte la lista **ya ordenada** en bloques de [EPISODES_PER_BLOCK].
+     *
+     * ⚠️ Los bloques son trozos del orden actual y no rangos fijos de números: en descendente, el
+     * primer chip tiene que ser el de los episodios NUEVOS (1172-1123), que es justo a lo que va
+     * quien pide ese orden. Con rangos fijos, pedir "descendente" en One Piece te dejaba igualmente
+     * en el 1-50, solo que del revés.
      */
-    private fun blocksFor(numbers: List<Int>): List<IntRange> {
-        if (numbers.size <= EPISODES_PER_BLOCK) return listOf(IntRange(0, 0))
-        return numbers.chunked(EPISODES_PER_BLOCK).map { it.first()..it.last() }
+    private fun blocksOf(ordered: List<EpisodeRef>): List<List<EpisodeRef>> =
+        if (ordered.size <= EPISODES_PER_BLOCK) listOf(ordered) else ordered.chunked(EPISODES_PER_BLOCK)
+
+    /** Bloque donde cae el primer episodio sin ver, con el orden actual. */
+    private fun initialBlockIndex(series: Series): Int {
+        val next = series.episodes.sortedBy { it.number }
+            .firstOrNull { it.number !in localVm.watchedEpisodes.value }?.number ?: return 0
+        return blocksOf(orderedEpisodes(series)).indexOfFirst { blk -> blk.any { it.number == next } }
+            .coerceAtLeast(0)
     }
 
-    /** Rellena la rejilla con un bloque, o con todo si [block] es null. */
-    private fun showEpisodeBlock(view: View, series: Series, block: IntRange?) {
-        val shown = if (block == null) series.episodes else series.episodes.filter { it.number in block }
+    /** Cablea el buscador y el botón de orden. Una vez por serie; el estado vive en el fragment. */
+    private fun setupEpisodeControls(view: View, series: Series) {
+        val search = view.findViewById<EditText>(R.id.ep_search)
+        val sort   = view.findViewById<Button>(R.id.btn_ep_sort)
+
+        updateSortLabel(sort)
+        sort.setOnClickListener {
+            episodesDescending = !episodesDescending
+            // El bloque de antes ya no significa lo mismo: al invertir, el índice 3 son otros
+            // episodios. Se vuelve al principio del nuevo orden, que es lo que se acaba de pedir.
+            episodeBlockIndex = 0
+            updateSortLabel(sort)
+            renderEpisodes(view, series, bringChipIntoView = true)
+        }
+
+        search.setText(episodeQuery)
+        search.doAfterTextChanged { text ->
+            val q = text?.toString()?.filter(Char::isDigit).orEmpty()
+            if (q == episodeQuery) return@doAfterTextChanged
+            episodeQuery = q
+            renderEpisodes(view, series)
+        }
+        // ⚠️ El OK del teclado lo cierra. En una TV ocupa media pantalla y se come el D-pad: con él
+        // puesto, ABAJO recorre sus teclas y no se llega ni a los chips ni a la rejilla.
+        search.setOnEditorActionListener { _, actionId, event ->
+            val done = actionId == EditorInfo.IME_ACTION_DONE ||
+                actionId == EditorInfo.IME_ACTION_NEXT ||
+                (event?.keyCode == KeyEvent.KEYCODE_ENTER && event.action == KeyEvent.ACTION_DOWN)
+            if (done) {
+                (requireContext().getSystemService(Context.INPUT_METHOD_SERVICE) as? InputMethodManager)
+                    ?.hideSoftInputFromWindow(search.windowToken, 0)
+            }
+            done
+        }
+    }
+
+    private fun updateSortLabel(sort: Button) {
+        sort.setText(if (episodesDescending) R.string.episodes_sort_desc else R.string.episodes_sort_asc)
+    }
+
+    /**
+     * Pinta la rejilla con el estado actual: orden, búsqueda y bloque.
+     *
+     * Un único sitio que decide qué se ve, en vez de tres caminos que se pisan. Buscar manda sobre
+     * los bloques —se busca en TODA la serie, no dentro del bloque visible, que es lo que espera
+     * quien escribe "847"— y por eso los chips se esconden mientras hay filtro: seguirían marcando
+     * un bloque que no es lo que hay debajo.
+     */
+    private fun renderEpisodes(view: View, series: Series, bringChipIntoView: Boolean = false) {
+        val ordered  = orderedEpisodes(series)
+        val blocks   = blocksOf(ordered)
+        episodeBlockIndex = episodeBlockIndex.coerceIn(0, blocks.lastIndex)
+        val searching = episodeQuery.isNotEmpty()
+        val shown = if (searching) ordered.filter { it.number.toString().startsWith(episodeQuery) }
+                    else blocks[episodeBlockIndex]
+
+        val blocksRow = view.findViewById<RecyclerView>(R.id.episode_blocks)
+        val showChips = !searching && blocks.size > 1
+        blocksRow.visibility = if (showChips) View.VISIBLE else View.GONE
+        if (showChips) {
+            // ⚠️ `RowLayoutManager` y no un LinearLayoutManager pelado: IZQ/DER en los extremos se
+            // quedan en la fila. Sin esto, DERECHA en el último chip se iba a una tarjeta de
+            // *Series relacionadas*, al otro extremo de la página (comprobado con One Piece), y
+            // desde allí ya no había vuelta.
+            if (blocksRow.layoutManager == null) blocksRow.layoutManager = RowLayoutManager(requireContext())
+            val labels = blocks.map { it.first().number to it.last().number }
+            val blockAdapter = EpisodeBlockAdapter(labels, upFocusId = R.id.ep_search) { index ->
+                // Elegido a mano: se muestra el bloque desde su principio, no se salta a mitad.
+                episodeBlockIndex = index
+                renderEpisodes(view, series)
+            }
+            blocksRow.adapter = blockAdapter
+            blockAdapter.select(episodeBlockIndex)
+            // ⚠️ Seleccionar el chip no lo trae a la vista: con 24 bloques la fila se quedaba en el
+            // chip 0 y el único resaltado estaba fuera de pantalla, así que parecía que no había
+            // ninguno elegido.
+            if (bringChipIntoView) blocksRow.scrollToPosition(episodeBlockIndex)
+        }
+
+        val empty = view.findViewById<TextView>(R.id.ep_search_empty)
+        empty.visibility = if (searching && shown.isEmpty()) View.VISIBLE else View.GONE
+        if (empty.isVisible) empty.text = getString(R.string.episodes_search_empty, episodeQuery)
+
+        // ABAJO desde la cabecera va a lo primero que haya debajo, que cambia con el filtro.
+        val below = if (showChips) R.id.episode_blocks else R.id.episodes_recycler
+        view.findViewById<EditText>(R.id.ep_search).nextFocusDownId = below
+        view.findViewById<Button>(R.id.btn_ep_sort).nextFocusDownId = below
+
+        fillEpisodeGrid(view, series, shown, showChips)
+    }
+
+    /** Rellena la rejilla con los episodios que toque. */
+    private fun fillEpisodeGrid(view: View, series: Series, shown: List<EpisodeRef>, chipsVisible: Boolean) {
         val watched = localVm.watchedEpisodes.value
         val grid = view.findViewById<RecyclerView>(R.id.episodes_recycler)
         // El ancho útil se mide del propio RecyclerView; antes del primer layout vale el de la
@@ -560,7 +663,10 @@ class SeriesFragment : Fragment() {
             episodes         = shown,
             seriesId         = series.id,
             watchedSet       = watched,
-            allNumbers       = series.episodes.map { it.number },
+            // ⚠️ SIEMPRE ascendente, aunque la rejilla se enseñe del revés: de aquí sale "el
+            // siguiente a ver", que es el primer episodio SIN VER de la serie. Pasándolo en el
+            // orden de pantalla, en descendente la marca caía en el último episodio.
+            allNumbers       = series.episodes.map { it.number }.sorted(),
             onClick          = { ep -> launchPlayer(series, ep.number) },
             onWatchedToggle  = { ep -> showWatchedDialog(ep) },
             spanCount        = columns,
@@ -574,8 +680,10 @@ class SeriesFragment : Fragment() {
                                else R.id.episode_tile,
             // Subir desde la primera fila de tiles lleva a los chips si los hay; si no, a la
             // portada. Sin esto, los chips también eran inalcanzables desde abajo.
-            upFocusId        = if (view.findViewById<View>(R.id.episode_blocks)?.isVisible == true)
-                                   R.id.episode_blocks else R.id.btn_continue
+            // Subir desde la primera fila lleva a los chips si los hay y, si no, al buscador, que
+            // es lo que queda justo encima. Sin esto, ni los chips ni la cabecera eran alcanzables
+            // desde abajo.
+            upFocusId        = if (chipsVisible) R.id.episode_blocks else R.id.ep_search
         )
         val recycler = view.findViewById<RecyclerView>(R.id.episodes_recycler)
         recycler.layoutManager = GridLayoutManager(requireContext(), columns)

@@ -6,6 +6,10 @@
   `AnimeImages`). Mide 220×124, así que en una TV 4K se estira; a este tamaño de tile es el precio
   razonable por reconocer un episodio de un vistazo en vez de leer un número.
 
+  El tile mide lo que mida su imagen a 16:9 (`RatioImageView`), no una altura fija: así se ve el
+  fotograma entero. El fondo tenue del hueco es lo que se ve mientras carga y en los episodios sin
+  miniatura.
+
   ⚠️ El número va sobre un degradado y no sobre la imagen pelada: un fotograma claro dejaba el
   número blanco ilegible, y ~8% de las capturas son casi negras, así que tiene que leerse igual de
   bien con y sin imagen.
@@ -13,16 +17,20 @@
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:id="@+id/episode_tile"
     android:layout_width="match_parent"
-    android:layout_height="@dimen/episode_tile_height"
+    android:layout_height="wrap_content"
     android:background="@drawable/card_background"
     android:focusable="true"
     android:focusableInTouchMode="true">
 
-    <ImageView
+    <!-- ⚠️ El alto sale del ancho a 16:9 (`RatioImageView`) y es lo que da altura al tile entero:
+         así el fotograma se ve COMPLETO, sin recorte, y el hueco mide lo mismo tenga imagen o no
+         (el CDN devuelve 403 en los episodios sin miniatura). -->
+    <com.animeav1.ui.RatioImageView
         android:id="@+id/ep_thumb"
         android:layout_width="match_parent"
-        android:layout_height="match_parent"
+        android:layout_height="wrap_content"
         android:scaleType="centerCrop"
+        android:background="#14FFFFFF"
         android:contentDescription="@null" />
 
     <View

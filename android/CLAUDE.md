@@ -1174,7 +1174,7 @@ El detalle de serie tiene botón **"Continuar"**
 (foco por defecto) que salta al primer episodio no visto. El diálogo de un episodio ofrece **"Marcar
 como visto (y anteriores)"** —`markWatchedThrough`, la opción por defecto— y **"Marcar solo este
 episodio"** como escape para quien quiera dejar un hueco a propósito (un especial suelto).
-La **rejilla de episodios** se parte en bloques de `EPISODES_PER_BLOCK` (100) con una fila de chips
+La **rejilla de episodios** se parte en bloques de `EPISODES_PER_BLOCK` (**50**) con una fila de chips
 (`EpisodeBlockAdapter`) que solo aparece si hay más de uno — One Piece son 1172 tiles, ~235
 pulsaciones de ABAJO para llegar al final. Al abrir la ficha se muestra el bloque que contiene el
 **primer episodio no visto**, no el primero. Cada tile lleva una barra de progreso
@@ -1193,6 +1193,38 @@ tile se limpia (`dispose()` + `setImageDrawable(null)`) ANTES de pedir la nueva:
 reciclado se quedaba enseñando el fotograma del episodio anterior, que no se lee como "falta una
 imagen" sino como "la rejilla miente". El número va sobre un degradado y con sombra porque tiene que
 leerse igual en un fotograma blanco y en uno negro.
+
+**Cabecera de la sección: buscador de episodios y orden.** En una serie de 1175 capítulos, llegar al
+847 a saltos de bloque son muchas pulsaciones; escribirlo son tres. Y quien abre One Piece para ver
+lo último no quiere empezar por el episodio 1.
+
+- ⚠️ **Los bloques son trozos de la lista YA ORDENADA, no rangos fijos de números.** En descendente
+  el primer chip es `1175-1126`, que es justo a lo que va quien pide ese orden; con rangos fijos,
+  pedir "descendente" te dejaba igualmente en el 1-50, solo que del revés. Por eso
+  `EpisodeBlockAdapter` recibe **pares** `(primero, último)` y no `IntRange`: un `IntRange` con
+  `first > last` está **vacío** en Kotlin, así que ni se etiquetaba ni casaba con ningún episodio.
+- ⚠️ `allNumbers` del `EpisodeGridAdapter` va **siempre ascendente**, aunque la rejilla se enseñe del
+  revés: de ahí sale "el siguiente a ver", que es el primer episodio SIN VER de la serie. Pasándolo
+  en el orden de pantalla, en descendente la marca caía en el último episodio.
+- **Buscar manda sobre los bloques**: se filtra por prefijo sobre TODA la serie (escribir `84` saca
+  849, 848, 847…), no dentro del bloque visible, que es lo que espera quien escribe un número. Por
+  eso los chips se esconden mientras hay filtro: seguirían marcando un bloque que no es lo que hay
+  debajo. Sin coincidencias sale un rótulo propio: una rejilla vacía y muda parece la app rota.
+- ⚠️ El **OK del teclado lo cierra** (misma lección que el editor de perfil): mientras está puesto se
+  come el D-pad y no se llega ni a los chips ni a la rejilla.
+- ⚠️ **La cadena de foco cambió**: lo primero que hay debajo de la portada ya no es la rejilla ni los
+  chips, es el buscador (`firstBelow = R.id.ep_search`), y de ahí se baja a chips o a rejilla según
+  haya filtro — se recablea en `renderEpisodes`. Apuntando la portada directamente a los tiles, el
+  buscador y el botón de orden serían inalcanzables bajando, que es exactamente lo que ya pasó una
+  vez con los chips.
+- Un único `renderEpisodes` decide qué se ve a partir del estado (orden, filtro, bloque), en vez de
+  tres caminos que se pisan.
+
+⚠️ **El tile enseña el fotograma ENTERO**: su alto sale del ancho a 16:9 (`ui/RatioImageView`), que
+es la proporción de las miniaturas del CDN, así que no hay nada que recortar. No vale
+`adjustViewBounds`, que sería lo obvio: ese calcula el alto a partir del drawable **ya cargado**, así
+que mientras las imágenes viajan los tiles miden 0 y la rejilla pega un salto cuando llegan las
+respuestas — y los episodios sin miniatura (403) se quedarían planos para siempre.
 
 ⚠️ Tres cosas que el bloque **no** puede decidir por su cuenta, porque son de la SERIE: el "siguiente
 a ver" (`EpisodeGridAdapter.allNumbers`, si no cada bloque pintaba su propio primer-no-visto como si

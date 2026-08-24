@@ -197,4 +197,10 @@
     <string name="update_needs_permission">Android tiene que dejar que AnimeAV1 instale aplicaciones. Se abre el ajuste; al volver, pulsa Actualizar otra vez.</string>
     <string name="update_download_failed">No se pudo descargar la actualización</string>
     <string name="update_install_failed">No se pudo instalar la actualización</string>
+
+    <!-- Rejilla de episodios: buscador y orden -->
+    <string name="episodes_search_hint">Nº de episodio</string>
+    <string name="episodes_sort_asc">↑ 1 → N</string>
+    <string name="episodes_sort_desc">↓ N → 1</string>
+    <string name="episodes_search_empty">Ningún episodio empieza por %1$s</string>
 </resources>
