@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<selector xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Active + focused: purple fill + white outline -->
+    <item android:state_focused="true" android:state_selected="true">
+        <shape android:shape="rectangle">
+            <solid android:color="#7B6CF6" />
+            <stroke android:width="3dp" android:color="#FFFFFF" />
+            <corners android:radius="20dp" />
+        </shape>
+    </item>
+    <!-- Active (filter applied, not focused) -->
+    <item android:state_selected="true">
+        <shape android:shape="rectangle">
+            <solid android:color="#7B6CF6" />
+            <corners android:radius="20dp" />
+        </shape>
+    </item>
+    <!-- Focused, not active: dark bg + accent outline -->
+    <item android:state_focused="true">
+        <shape android:shape="rectangle">
+            <solid android:color="#333333" />
+            <stroke android:width="2dp" android:color="@color/focus_stroke" />
+            <corners android:radius="20dp" />
+        </shape>
+    </item>
+    <!-- Default -->
+    <item>
+        <shape android:shape="rectangle">
+            <solid android:color="#2A2A2A" />
+            <corners android:radius="20dp" />
+        </shape>
+    </item>
+</selector>

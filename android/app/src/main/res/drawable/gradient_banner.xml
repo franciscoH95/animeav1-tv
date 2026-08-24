@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Degradado del banner hacia el fondo de la app. Sin él el banner acaba en un corte recto y la
+     portada superpuesta parece pegada encima de una foto en vez de integrada en el bloque.
+     Tres paradas y no dos: con solo dos, la mitad de arriba del banner se oscurece de más y el arte
+     se pierde; así el oscurecido se concentra en el tercio inferior, que es donde va el texto. -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
+    <gradient
+        android:type="linear"
+        android:angle="90"
+        android:startColor="@color/bg_dark"
+        android:centerColor="#CC121212"
+        android:endColor="#33121212"
+        android:centerY="0.35" />
+</shape>

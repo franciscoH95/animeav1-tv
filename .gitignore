@@ -1,0 +1,41 @@
+# ── Android / Gradle ───────────────────────────────────────────────────────────
+# Machine-local SDK path — must never be committed.
+local.properties
+# Release signing secrets (storePassword/keyPassword in plain text).
+keystore.properties
+*.jks
+*.keystore
+
+build/
+.gradle/
+.cxx/
+captures/
+*.apk
+*.aab
+*.ap_
+*.dex
+*.class
+
+# ── IDE ────────────────────────────────────────────────────────────────────────
+.idea/
+*.iml
+.kotlin/
+
+# ── Scraper de Python ──────────────────────────────────────────────────────────
+# Queda FUERA del repo público a propósito: este repositorio publica la app de Android TV.
+scraper.py
+requirements.txt
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+env/
+*.egg-info/
+
+# ── Claude Code ────────────────────────────────────────────────────────────────
+# settings.local.json is per-machine; .claude/settings.json (if any) stays tracked.
+.claude/settings.local.json
+
+# ── OS ─────────────────────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db

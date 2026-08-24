@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="bg_dark">#FF121212</color>
+    <color name="bg_card">#FF1E1E2E</color>
+    <color name="bg_card_dark">#DD0D0D1A</color>
+    <color name="bg_card_focused">#FF313144</color>
+    <color name="accent">#FF7B6CF6</color>
+    <color name="accent_light">#FFB09CF8</color>
+    <!-- Single, consistent D-pad focus/active color across grids, tabs and chips -->
+    <color name="focus_stroke">#FF7B6CF6</color>
+    <!-- Accent-derived translucent variants (keep in sync with accent) -->
+    <color name="accent_line">#CC7B6CF6</color>
+    <color name="accent_badge_bg">#557B6CF6</color>
+    <color name="text_primary">#FFFFFFFF</color>
+    <color name="text_secondary">#FFB0B0C0</color>
+    <color name="score_gold">#FFFFD700</color>
+    <color name="placeholder_color">#FF1E1E1E</color>
+</resources>

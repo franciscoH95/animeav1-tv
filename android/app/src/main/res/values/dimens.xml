@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Shared poster height for the 3 grids (Catálogo / Mi Lista / Horario).
+         Keep these in one place so the cards can't drift apart. -->
+    <!-- Altura del póster. Ligada a GRID_COLUMNS: con 6 columnas la celda mide ~128dp de
+         arte útil, y 2:3 exige ~181dp. Medido en el emulador (ver ui/Grids.kt). -->
+    <dimen name="poster_card_height">186dp</dimen>
+
+    <!-- TV overscan-safe margins (~5% / ~3%). Content (grids + headers) keeps these from the edges. -->
+    <dimen name="tv_safe_h">48dp</dimen>
+    <dimen name="tv_safe_v">24dp</dimen>
+
+    <!-- Series detail: left info panel + its anchoring gradient -->
+    <dimen name="series_panel_width">380dp</dimen>
+    <dimen name="series_panel_gradient_width">440dp</dimen>
+
+    <!-- Player: right-side server drawer -->
+    <dimen name="server_drawer_width">440dp</dimen>
+    <!-- Ancho de las tarjetas de las filas horizontales de Inicio. Lo comparten item_home_poster
+         y el skeleton de view_home_row: si divergen, los huecos no caen donde caen las tarjetas. -->
+    <dimen name="home_card_width">130dp</dimen>
+
+    <!-- Tarjetas de "Series relacionadas" (ficha de serie). ⚠️ Las dos van juntas: el arte es 2:3,
+         así que la altura del póster es el ancho × 1,5. Antes la tarjeta medía 110dp de ancho y el
+         póster se quedaba con lo que sobraba de una altura fija de 160dp —unos 108dp, casi
+         cuadrado—, así que `centerCrop` se comía un tercio del alto del arte.
+         `relation_row_height` incluye el hueco vertical que necesita la animación de foco (escala
+         1.10) para no salir recortada. -->
+    <dimen name="relation_card_width">96dp</dimen>
+    <dimen name="relation_poster_height">144dp</dimen>
+    <dimen name="relation_row_height">216dp</dimen>
+
+    <!-- Ficha de serie, disposición en tres secciones (portada / episodios / relacionadas).
+         ⚠️ `series_poster_overlap` es NEGATIVO: es lo que hace que la portada monte sobre el borde
+         inferior del banner. Va emparejado con `series_banner_height` y con `series_info_top`, que
+         baja el bloque de texto para que arranque por debajo del banner en vez de sobre él. -->
+    <dimen name="series_banner_height">200dp</dimen>
+    <dimen name="series_poster_overlap">-64dp</dimen>
+    <dimen name="series_poster_width">136dp</dimen>
+    <dimen name="series_poster_height">204dp</dimen>
+    <dimen name="series_info_top">48dp</dimen>
+    <dimen name="series_section_gap">20dp</dimen>
+</resources>

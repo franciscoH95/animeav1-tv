@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<selector xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Focused AND selected: bright white outline over accent fill -->
+    <item android:state_focused="true" android:state_selected="true">
+        <shape android:shape="rectangle">
+            <solid android:color="@color/accent" />
+            <stroke android:width="3dp" android:color="#FFFFFF" />
+            <corners android:radius="6dp" />
+        </shape>
+    </item>
+    <!-- Selected (active tab, not focused) -->
+    <item android:state_selected="true">
+        <shape android:shape="rectangle">
+            <solid android:color="@color/accent" />
+            <corners android:radius="6dp" />
+        </shape>
+    </item>
+    <!-- Focused but not selected: accent outline on dark bg -->
+    <item android:state_focused="true">
+        <shape android:shape="rectangle">
+            <solid android:color="#2A2A2A" />
+            <stroke android:width="2dp" android:color="@color/focus_stroke" />
+            <corners android:radius="6dp" />
+        </shape>
+    </item>
+    <!-- Default -->
+    <item>
+        <shape android:shape="rectangle">
+            <solid android:color="@android:color/transparent" />
+            <corners android:radius="6dp" />
+        </shape>
+    </item>
+</selector>

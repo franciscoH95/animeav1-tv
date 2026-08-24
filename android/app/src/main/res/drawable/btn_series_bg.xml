@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<selector xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Focused: bright purple outline -->
+    <item android:state_focused="true" android:state_pressed="false">
+        <shape android:shape="rectangle">
+            <solid android:color="#CC7B6CF6" />
+            <stroke android:width="3dp" android:color="#FFFFFF" />
+            <corners android:radius="6dp" />
+        </shape>
+    </item>
+    <!-- Pressed -->
+    <item android:state_pressed="true">
+        <shape android:shape="rectangle">
+            <solid android:color="#EE7B6CF6" />
+            <corners android:radius="6dp" />
+        </shape>
+    </item>
+    <!-- Default -->
+    <item>
+        <shape android:shape="rectangle">
+            <solid android:color="#44FFFFFF" />
+            <corners android:radius="6dp" />
+        </shape>
+    </item>
+</selector>

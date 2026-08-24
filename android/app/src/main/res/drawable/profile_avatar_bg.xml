@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Círculo del avatar. El color lo pone el adapter con setColorFilter sobre este shape, así que
+     aquí va en blanco: tintar un drawable con color propio daría una mezcla, no el color pedido. -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="oval">
+    <solid android:color="#FFFFFF" />
+</shape>

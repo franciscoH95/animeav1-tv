@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Fondo de los distintivos de dato secundario sobre un póster (el año de una serie relacionada).
+     Mismas esquinas que new_badge_bg para que los dos distintivos de una tarjeta casen; negro
+     translúcido en vez del acento, que se reserva para lo que sí es información principal. -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
+    <solid android:color="#CC000000" />
+    <corners android:radius="4dp" />
+</shape>

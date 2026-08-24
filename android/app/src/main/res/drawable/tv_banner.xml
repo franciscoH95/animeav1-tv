@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="320dp"
+    android:height="180dp"
+    android:viewportWidth="320"
+    android:viewportHeight="180">
+    <!-- Background -->
+    <path android:fillColor="#FF121212"
+        android:pathData="M0,0h320v180H0z" />
+    <!-- Logo diamond left -->
+    <path android:fillColor="#FF7B6CF6"
+        android:pathData="M40,90 L80,50 L120,90 L80,130 Z" />
+    <!-- Decorative bar -->
+    <path android:fillColor="#FF7B6CF6"
+        android:pathData="M140,75 L300,75 L300,85 L140,85 Z" />
+    <path android:fillColor="#FF9B8CF6"
+        android:pathData="M140,95 L260,95 L260,105 L140,105 Z" />
+    <path android:fillColor="#FF5B4CD6"
+        android:pathData="M140,115 L220,115 L220,122 L140,122 Z" />
+</vector>

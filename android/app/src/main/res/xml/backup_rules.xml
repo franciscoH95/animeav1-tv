@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Reglas de Auto Backup para Android 11 y anteriores (API <= 30). El equivalente para API 31+ es
+  data_extraction_rules.xml, y hay que tocar LOS DOS a la vez.
+
+  ⚠️ SOLO hay <exclude>, ni un <include>. En cuanto aparece un <include> el backup se reduce a lo
+  listado, y eso dejaría fuera `animeav1.db-wal`, que es donde SQLite tiene las últimas escrituras
+  mientras no se hace checkpoint (en una captura real el -wal pesaba 416 KB frente a 40 KB del .db).
+  Con solo excludes se respalda todo lo elegible menos lo de abajo, que es el comportamiento que se
+  verificó funcionando en un ciclo desinstalar → instalar.
+
+  La caché de OkHttp (`cacheDir/http_cache`) no hace falta excluirla: Auto Backup ya ignora
+  getCacheDir() y getCodeCacheDir().
+-->
+<full-backup-content>
+    <!-- El -shm es el índice en memoria compartida del WAL: SQLite lo reconstruye solo al abrir la
+         base de datos, así que respaldarlo no aporta nada y restaurar uno desparejado solo puede
+         dar problemas. Los datos están en el .db y el -wal, que sí se respaldan. -->
+    <exclude domain="database" path="animeav1.db-shm" />
+</full-backup-content>

@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Aro de foco del avatar de la barra global.
+
+  Va en un contenedor APARTE y no en el propio círculo del avatar porque ese círculo se tiñe con
+  `setColorFilter` (SRC_IN) para tomar el color del perfil: cualquier trazo que viviera en el mismo
+  drawable se teñiría del mismo color y desaparecería contra el relleno.
+
+  Mismo criterio que `tab_background`, que es el vecino de al lado en la barra: 2dp de
+  @color/focus_stroke al enfocarse y nada el resto del tiempo.
+-->
+<selector xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:state_focused="true">
+        <shape android:shape="oval">
+            <solid android:color="@android:color/transparent" />
+            <stroke android:width="2dp" android:color="@color/focus_stroke" />
+        </shape>
+    </item>
+    <item>
+        <shape android:shape="oval">
+            <solid android:color="@android:color/transparent" />
+        </shape>
+    </item>
+</selector>

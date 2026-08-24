@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Gradient from dark (left) to transparent (right) — anchors the info panel -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android">
+    <gradient
+        android:type="linear"
+        android:angle="0"
+        android:startColor="#EE000000"
+        android:endColor="#00000000" />
+</shape>

@@ -1,0 +1,200 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">AnimeAV1</string>
+    <string name="search_hint">Buscar anime…</string>
+    <string name="search">Buscar</string>
+    <string name="clear">Limpiar</string>
+    <string name="no_results">No se encontraron resultados</string>
+    <string name="loading">Cargando…</string>
+    <string name="load_more_failed">No se pudieron cargar más resultados</string>
+    <string name="retry">Reintentar</string>
+
+    <!-- Section / tab labels -->
+    <string name="tab_home">Inicio</string>
+    <string name="tab_catalog">Catálogo</string>
+    <string name="tab_schedule">Horario</string>
+    <string name="tab_mylist">Mi Lista</string>
+    <string name="header_schedule">Horario de Emisión</string>
+
+    <!-- Accessibility (TalkBack) -->
+    <string name="cd_loading">Cargando</string>
+    <string name="cd_buffering">Cargando vídeo</string>
+    <string name="cd_favorite">Favorito</string>
+
+    <!-- Player resume prompt -->
+    <string name="resume">Reanudar</string>
+    <string name="restart">Desde el inicio</string>
+
+    <!-- Player: next-episode auto-play card -->
+    <string name="next_up">A continuación</string>
+    <string name="play_now">Ver ahora</string>
+    <string name="cancel">Cancelar</string>
+    <string name="next_in">Reproduciendo en %1$ds</string>
+
+    <!-- Mi Lista: airing series with unwatched new episodes -->
+    <string name="new_badge">NUEVO</string>
+
+    <!-- Confirmación de salida (BACK en la pantalla principal o en el selector de perfiles) -->
+    <string name="exit_title">¿Cerrar AnimeAV1?</string>
+    <string name="exit_subtitle">Lo que estabas viendo se guarda igualmente.</string>
+    <string name="exit_confirm">Salir</string>
+
+    <!-- Perfiles -->
+    <string name="profiles_title">Perfiles</string>
+    <string name="profiles_title_pick">¿Quién está viendo?</string>
+    <string name="profiles_hint">Cada perfil tiene sus propias listas, su historial y sus puntos de reanudación.</string>
+    <string name="profiles_actions_hint">Pulsa para elegir · Mantén pulsado para editar</string>
+    <string name="profile_active">ACTIVO</string>
+    <string name="profile_add">Añadir perfil</string>
+    <string name="profile_new">Nuevo perfil</string>
+    <string name="profile_edit">Editar perfil</string>
+    <string name="profile_name_hint">Nombre</string>
+    <string name="profile_name_required">Escribe un nombre</string>
+    <string name="profile_color">Color</string>
+    <string name="profile_save">Guardar</string>
+    <string name="profile_delete">Borrar</string>
+    <string name="profile_delete_confirm">¿Seguro? Pulsa otra vez</string>
+    <string name="profile_delete_warning">Se borrarán las listas, el historial y los puntos de reanudación de %1$s. No se puede deshacer.</string>
+    <string name="profile_delete_last">No se puede borrar el único perfil</string>
+    <string name="profile_deleted">Perfil borrado</string>
+    <string name="profile_switched">Ahora estás en %1$s</string>
+
+    <!-- Copia de seguridad -->
+    <string name="backup_title">Copia de seguridad</string>
+    <string name="backup_subtitle">Guarda tus listas, lo que has visto y los puntos de reanudación en un fichero, para no perderlos al reinstalar.</string>
+    <string name="backup_export">Exportar ahora</string>
+    <string name="backup_export_ok">Guardado: %1$d elementos en %2$s</string>
+    <string name="backup_export_failed">No se pudo exportar: %1$s</string>
+    <string name="backup_import_header">Restaurar desde un fichero</string>
+    <string name="backup_import_hint">Solo se listan los ficheros que la app puede abrir. Para restaurar una copia tras reinstalar, déjala en:\n%1$s</string>
+    <string name="backup_import_empty">No hay ficheros de copia que se puedan abrir.</string>
+    <string name="backup_file_meta">%1$s · %2$s · %3$s</string>
+    <string name="backup_confirm_title">¿Restaurar esta copia?</string>
+    <string name="backup_confirm_detail">%1$s\n%2$s\n\nFusionar mantiene lo que ya tienes.\nSustituir borra lo actual y deja solo la copia.</string>
+    <string name="backup_merge">Fusionar</string>
+    <string name="backup_replace">Sustituir</string>
+    <string name="backup_import_ok">Restaurados %1$d elementos</string>
+    <string name="backup_read_failed">No se pudo leer el fichero</string>
+    <string name="backup_invalid_file">El fichero no es una copia válida de esta app</string>
+    <!-- Borrado de una copia (mantener pulsado sobre la fila) -->
+    <string name="backup_actions_hint">Pulsa para restaurar · Mantén pulsado para borrar</string>
+    <string name="backup_delete">Borrar copia</string>
+    <string name="backup_delete_title">¿Borrar esta copia?</string>
+    <string name="backup_delete_detail">%1$s\n%2$s\n\nSe borrará de %3$s, y no se puede deshacer.\n\nTus listas, lo que has visto y los puntos de reanudación no se tocan: esto solo borra el fichero.</string>
+    <string name="backup_where_both">Descargas y de la carpeta de la app</string>
+    <string name="backup_where_downloads">Descargas</string>
+    <string name="backup_where_inbox">la carpeta de la app</string>
+    <string name="backup_delete_ok">Copia borrada</string>
+    <string name="backup_delete_partial_inbox">Se borró de la carpeta de la app, pero la copia de Descargas sigue ahí</string>
+    <string name="backup_delete_partial_downloads">Se borró de Descargas, pero la copia de la carpeta de la app sigue ahí</string>
+    <string name="backup_delete_failed">No se pudo borrar «%1$s»</string>
+    <string name="backup_busy">Espera a que termine la operación en curso</string>
+    <!-- Dónde vive cada copia, en su fila -->
+    <string name="backup_loc_both">En Descargas y en la app</string>
+    <string name="backup_loc_downloads">Solo en Descargas</string>
+    <string name="backup_loc_inbox">Solo en la app · se pierde al desinstalar</string>
+
+    <string name="backup_replace_empty">Esa copia no tiene nada dentro: sustituir borraría tus listas sin restaurar nada</string>
+
+    <!-- Full-screen search -->
+    <string name="search_prompt">Escribe para buscar un anime…</string>
+    <string name="search_results_count">%1$d resultados</string>
+
+    <!-- Home (Inicio) -->
+    <string name="home_continue">Continuar viendo</string>
+    <string name="home_viendo">Mi lista · Viendo</string>
+    <string name="home_porver">Mi lista · Por ver</string>
+    <string name="home_row_airing">En emisión</string>
+    <string name="home_row_top">Mejor valorados</string>
+    <string name="home_row_movies">Películas</string>
+    <string name="home_row_failed">No se pudo cargar esta fila</string>
+    <string name="home_explore">Explorar catálogo</string>
+    <string name="home_empty">Aún no has empezado a ver nada.\nExplora el Catálogo para empezar.</string>
+
+    <!-- Mi Lista -->
+    <string name="list_por_ver">Por Ver</string>
+    <string name="list_viendo">Viendo</string>
+    <string name="list_completadas">Completadas</string>
+    <string name="list_favoritos">Favoritos</string>
+    <string name="mylist_empty">Esta lista está vacía.\nAgrega series desde su pantalla de detalle.</string>
+
+    <!-- Horario: fecha del último episodio, relativa a hoy -->
+    <string name="date_today">Hoy</string>
+    <string name="date_yesterday">Ayer</string>
+    <string name="date_days_ago">Hace %1$d días</string>
+
+    <!-- Horario -->
+    <string name="schedule_empty">No hay series programadas para este día.</string>
+
+    <!-- Detalle de serie: diálogo de un episodio -->
+    <!-- Sinopsis completa (ficha de serie) -->
+    <string name="synopsis_more">Leer sinopsis completa</string>
+    <string name="close">Cerrar</string>
+
+    <!-- Próximo episodio (ficha de serie, solo series en emisión) -->
+    <string name="next_ep_today">Nuevo episodio hoy</string>
+    <string name="next_ep_tomorrow">Nuevo episodio mañana</string>
+    <string name="next_ep_on">Nuevo episodio el %1$s</string>
+
+    <!-- Presentación de arranque. `translatable="false"`: es un nombre propio, no texto de UI. -->
+    <string name="intro_name" translatable="false">DON FAK</string>
+    <string name="intro_presents" translatable="false">PRESENTS</string>
+
+    <!-- Quitar de "Continuar viendo" (Inicio, mantener pulsado sobre la tarjeta) -->
+    <string name="continue_remove_title">¿Quitar de Continuar viendo?</string>
+    <string name="continue_remove_msg">«%1$s» dejará de aparecer aquí y el episodio %2$d volverá a empezar desde el principio. Lo que ya has visto no se borra.</string>
+    <string name="continue_remove">Quitar</string>
+
+    <string name="ep_dialog_title">Episodio %1$d</string>
+    <string name="ep_watch">✓  Marcar como visto (y anteriores)</string>
+    <string name="ep_watch_only">✓  Marcar solo este episodio</string>
+    <string name="ep_unwatch">✗  Marcar como no visto</string>
+
+    <!-- Detalle de serie -->
+    <string name="back_button">← Volver</string>
+    <string name="add_to_list">♡  Agregar a lista</string>
+    <string name="header_episodes">Episodios</string>
+    <string name="header_relations">Series relacionadas</string>
+
+    <!-- Reproductor: fallback automático de fuente -->
+    <string name="source_falling_back">Esa fuente no responde. Probando %1$s…</string>
+    <string name="source_all_failed">Ninguna fuente responde (la última: %1$s). Prueba otra o vuelve más tarde.</string>
+    <string name="source_none_works">No se pudo reproducir el episodio. Prueba otra fuente.</string>
+
+    <!-- Reproductor: tiempo que queda, no duración total -->
+    <string name="time_remaining">-%1$s</string>
+
+    <!-- Reproductor: salida del estado de error -->
+    <string name="error_choose_source">Elegir fuente</string>
+    <string name="error_exit">Salir</string>
+
+    <!-- Reproductor -->
+    <string name="header_servers">SERVIDORES</string>
+    <string name="resume_title">¿Continuar viendo?</string>
+
+    <!-- Reproductor: pistas de audio del panel de servidores -->
+    <string name="audio_sub_header">SUBTITULADO</string>
+    <string name="audio_dub_header">DOBLADO</string>
+    <string name="audio_sub">Subtitulado</string>
+    <string name="audio_dub">Doblado</string>
+    <!-- Servidor con su pista, cuando el episodio ofrece las dos: "HLS (Doblado)" -->
+    <string name="server_with_track">%1$s (%2$s)</string>
+    <string name="episode_of">Episodio %1$d de %2$d</string>
+    <string name="episode_n">Episodio %1$d</string>
+    <string name="settings_title">Ajustes del perfil</string>
+    <string name="settings_subtitle">Cada perfil tiene sus propias listas y su historial.</string>
+    <string name="settings_profiles">Perfiles</string>
+    <string name="settings_backup">Copia de seguridad</string>
+
+    <!-- Actualizaciones OTA -->
+    <string name="update_title">Hay una versión nueva</string>
+    <string name="update_version">Versión %1$s · %2$s</string>
+    <string name="update_now">ACTUALIZAR AHORA</string>
+    <string name="update_later">MÁS TARDE</string>
+    <string name="update_permission">DAR PERMISO</string>
+    <string name="update_downloading">Descargando… %1$d%%</string>
+    <string name="update_installing">Preparando la instalación…</string>
+    <string name="update_needs_permission">Android tiene que dejar que AnimeAV1 instale aplicaciones. Se abre el ajuste; al volver, pulsa Actualizar otra vez.</string>
+    <string name="update_download_failed">No se pudo descargar la actualización</string>
+    <string name="update_install_failed">No se pudo instalar la actualización</string>
+</resources>

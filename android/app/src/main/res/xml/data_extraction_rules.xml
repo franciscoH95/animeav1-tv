@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Reglas de extracción de datos para Android 12+ (API 31+). Sustituye a backup_rules.xml en esas
+  versiones, así que cualquier cambio va en los dos ficheros.
+
+  Dos destinos independientes:
+    - cloud-backup   → la copia en la cuenta de Google (25 MB por app, solo la más reciente).
+    - device-transfer → el traspaso directo de un dispositivo a otro al configurarlo.
+
+  Mismo criterio que en backup_rules.xml: solo <exclude>, nunca <include> (ver el comentario de
+  aquel fichero sobre el -wal).
+-->
+<data-extraction-rules>
+    <cloud-backup>
+        <exclude domain="database" path="animeav1.db-shm" />
+    </cloud-backup>
+    <device-transfer>
+        <exclude domain="database" path="animeav1.db-shm" />
+    </device-transfer>
+</data-extraction-rules>
