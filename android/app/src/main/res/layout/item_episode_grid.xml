@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Episode card for grid layout -->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/episode_tile"
+    android:layout_width="match_parent"
+    android:layout_height="72dp"
+    android:background="@drawable/card_background"
+    android:focusable="true"
+    android:focusableInTouchMode="true"
+    android:gravity="center">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:orientation="vertical"
+        android:gravity="center"
+        android:padding="4dp">
+
+        <TextView
+            android:id="@+id/ep_number"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:textColor="@color/text_primary"
+            android:textSize="18sp"
+            android:textStyle="bold" />
+    </LinearLayout>
+
+    <!-- Watched checkmark overlay -->
+    <TextView
+        android:id="@+id/ep_watched"
+        android:layout_width="20dp"
+        android:layout_height="20dp"
+        android:layout_gravity="top|end"
+        android:layout_margin="4dp"
+        android:text="✓"
+        android:textColor="#FF4CAF50"
+        android:textSize="12sp"
+        android:textStyle="bold"
+        android:gravity="center"
+        android:visibility="gone" />
+    <!-- "A medias": franja inferior con lo que llevas del episodio. Sale de episode_progress, así
+         que un episodio empezado y no terminado se distingue de uno intacto sin abrirlo. -->
+    <View
+        android:id="@+id/ep_progress"
+        android:layout_width="0dp"
+        android:layout_height="3dp"
+        android:layout_gravity="bottom|start"
+        android:background="@color/accent"
+        android:visibility="gone" />
+
+    <!-- "Siguiente a ver". Un punto y NO un borde de acento: el borde es el estado de foco y las
+         dos marcas juntas serían indistinguibles. -->
+    <TextView
+        android:id="@+id/ep_next"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="top|start"
+        android:layout_margin="6dp"
+        android:text="●"
+        android:textColor="@color/accent_light"
+        android:textSize="10sp"
+        android:visibility="gone" />
+
+</FrameLayout>

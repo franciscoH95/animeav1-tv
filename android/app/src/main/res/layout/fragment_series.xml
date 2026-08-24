@@ -1,0 +1,473 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Ficha de serie en TRES secciones apiladas: portada+info, episodios y relacionadas.
+
+  ⚠️ El scroll es `SectionScrollView`, el mismo de Inicio: al enfocar una sección la **ancla arriba**
+  en vez de desplazar lo mínimo. Con tres bloques altos, el desplazamiento mínimo de serie dejaba la
+  sección recién enfocada pegada al borde inferior y sin saber si quedaba algo más abajo.
+
+  La sección de portada se queda a propósito por debajo de la altura de pantalla para que **asome la
+  primera fila de episodios**: en una TV, si la primera pantalla se llena entera nadie sabe que
+  ABAJO lleva a alguna parte.
+-->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/bg_dark">
+
+    <com.animeav1.ui.SectionScrollView
+        android:id="@+id/series_scroll"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:clipToPadding="false"
+        android:paddingBottom="@dimen/tv_safe_v"
+        android:scrollbars="none">
+
+        <LinearLayout
+            android:id="@+id/series_content"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical">
+
+            <!-- ══ SECCIÓN 1: portada + info + acciones ══ -->
+            <LinearLayout
+                android:id="@+id/hero_section"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:clipChildren="false"
+                android:clipToPadding="false">
+
+                <!-- Banner. La portada de abajo se le superpone con un margen negativo, así que
+                     este bloque no puede recortar a sus hijos (de eso se encarga el contenedor). -->
+                <FrameLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="@dimen/series_banner_height">
+
+                    <ImageView
+                        android:id="@+id/series_backdrop"
+                        android:layout_width="match_parent"
+                        android:layout_height="match_parent"
+                        android:scaleType="centerCrop"
+                        android:contentDescription="@null" />
+
+                    <!-- Degradado hacia el fondo: sin él, el banner acaba en un corte recto y la
+                         portada superpuesta se ve pegada sobre una foto, no integrada. -->
+                    <View
+                        android:layout_width="match_parent"
+                        android:layout_height="match_parent"
+                        android:background="@drawable/gradient_banner" />
+
+                    <!-- ← Volver, sobre el banner. Fuera de la fila de acciones a propósito: allí
+                         competiría con "Continuar", que es lo que el usuario viene a pulsar. -->
+                    <Button
+                        android:id="@+id/btn_back"
+                        android:layout_width="wrap_content"
+                        android:layout_height="44dp"
+                        android:layout_gravity="top|start"
+                        android:layout_marginStart="@dimen/tv_safe_h"
+                        android:layout_marginTop="@dimen/tv_safe_v"
+                        android:text="@string/back_button"
+                        android:textColor="#FFFFFF"
+                        android:textSize="13sp"
+                        android:background="@drawable/btn_series_bg"
+                        android:paddingHorizontal="18dp"
+                        android:focusable="true"
+                        android:focusableInTouchMode="true"
+                        android:nextFocusDown="@id/btn_continue" />
+                </FrameLayout>
+
+                <!-- Portada + info, superpuestas al borde inferior del banner -->
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:layout_marginTop="@dimen/series_poster_overlap"
+                    android:paddingStart="@dimen/tv_safe_h"
+                    android:paddingEnd="@dimen/tv_safe_h">
+
+                    <ImageView
+                        android:id="@+id/series_poster"
+                        android:layout_width="@dimen/series_poster_width"
+                        android:layout_height="@dimen/series_poster_height"
+                        android:scaleType="centerCrop"
+                        android:elevation="8dp"
+                        android:contentDescription="@null" />
+
+                    <LinearLayout
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:orientation="vertical"
+                        android:layout_marginStart="24dp"
+                        android:layout_marginTop="@dimen/series_info_top">
+
+                        <TextView
+                            android:id="@+id/series_title"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:textColor="@color/text_primary"
+                            android:textSize="26sp"
+                            android:textStyle="bold"
+                            android:maxLines="2"
+                            android:ellipsize="end"
+                            android:shadowColor="#AA000000"
+                            android:shadowDx="1"
+                            android:shadowDy="1"
+                            android:shadowRadius="6" />
+
+                        <!-- Puntuación, estado/año/tipo y géneros en UNA fila: a lo ancho de la
+                             pantalla caben de sobra, y así el badge deja de partirse en dos como
+                             hacía en la columna estrecha de antes. -->
+                        <LinearLayout
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:orientation="horizontal"
+                            android:gravity="center_vertical"
+                            android:layout_marginTop="10dp">
+
+                            <TextView
+                                android:id="@+id/series_score"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:textColor="@color/score_gold"
+                                android:textSize="15sp"
+                                android:textStyle="bold"
+                                android:layout_marginEnd="14dp" />
+
+                            <TextView
+                                android:id="@+id/series_status"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:paddingHorizontal="10dp"
+                                android:paddingVertical="4dp"
+                                android:background="@color/accent_badge_bg"
+                                android:textColor="@color/accent_light"
+                                android:textSize="13sp"
+                                android:maxLines="1" />
+
+                            <!-- Géneros en la MISMA fila: a lo ancho de la pantalla sobra sitio, y
+                                 cada línea suelta que se ahorra la cabecera es una línea que gana
+                                 la sinopsis antes de que haya que recortarla. -->
+                            <TextView
+                                android:id="@+id/series_genres"
+                                android:layout_width="0dp"
+                                android:layout_height="wrap_content"
+                                android:layout_weight="1"
+                                android:layout_marginStart="14dp"
+                                android:textColor="@color/text_secondary"
+                                android:textSize="13sp"
+                                android:maxLines="1"
+                                android:ellipsize="end" />
+                        </LinearLayout>
+
+                        <TextView
+                            android:id="@+id/series_next_ep"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="10dp"
+                            android:drawableStart="@drawable/ic_schedule"
+                            android:drawablePadding="8dp"
+                            android:gravity="center_vertical"
+                            android:textColor="@color/accent_light"
+                            android:textSize="13sp"
+                            android:textStyle="bold"
+                            android:maxLines="1"
+                            android:ellipsize="end"
+                            android:visibility="gone" />
+
+                        <!-- ⚠️ Las acciones van ANTES de la sinopsis, no al final del bloque: son
+                             lo que el usuario viene a pulsar, y puestas detrás de un texto de
+                             varias líneas se caían por debajo del borde de la pantalla (medido: en
+                             la primera versión no se veían sin hacer scroll). -->
+                        <LinearLayout
+                            android:layout_width="match_parent"
+                            android:layout_height="52dp"
+                            android:layout_marginTop="18dp"
+                            android:orientation="horizontal">
+
+                            <Button
+                                android:id="@+id/btn_continue"
+                                android:layout_width="wrap_content"
+                                android:layout_height="match_parent"
+                                android:minWidth="300dp"
+                                android:textAllCaps="false"
+                                android:textColor="@color/text_primary"
+                                android:textSize="15sp"
+                                android:drawableStart="@drawable/ic_play_arrow"
+                                android:drawablePadding="8dp"
+                                android:gravity="center"
+                                android:paddingHorizontal="24dp"
+                                android:background="@drawable/btn_series_bg"
+                                android:focusable="true"
+                                android:focusableInTouchMode="true"
+                                android:nextFocusUp="@id/btn_back"
+                                android:nextFocusRight="@id/btn_favorite"
+                                android:nextFocusDown="@id/episodes_recycler" />
+
+                            <Button
+                                android:id="@+id/btn_favorite"
+                                android:layout_width="wrap_content"
+                                android:layout_height="match_parent"
+                                android:layout_marginStart="12dp"
+                                android:minWidth="220dp"
+                                android:text="@string/add_to_list"
+                                android:textColor="#FFFFFF"
+                                android:textSize="14sp"
+                                android:paddingHorizontal="20dp"
+                                android:background="@drawable/btn_series_bg"
+                                android:focusable="true"
+                                android:focusableInTouchMode="true"
+                                android:nextFocusUp="@id/btn_back"
+                                android:nextFocusLeft="@id/btn_continue"
+                                android:nextFocusRight="@id/btn_heart"
+                                android:nextFocusDown="@id/episodes_recycler" />
+
+                            <ImageButton
+                                android:id="@+id/btn_heart"
+                                android:layout_width="56dp"
+                                android:layout_height="match_parent"
+                                android:layout_marginStart="12dp"
+                                android:src="@drawable/ic_favorite_border"
+                                android:scaleType="fitCenter"
+                                android:padding="13dp"
+                                android:contentDescription="@string/cd_favorite"
+                                android:background="@drawable/btn_series_bg"
+                                android:focusable="true"
+                                android:focusableInTouchMode="true"
+                                android:nextFocusUp="@id/btn_back"
+                                android:nextFocusLeft="@id/btn_favorite"
+                                android:nextFocusDown="@id/episodes_recycler" />
+                        </LinearLayout>
+
+                        <!-- ⚠️ Tope de líneas y no de palabras: lo que cabe depende del ancho y de
+                             dónde parta cada palabra. Si se corta, aparece "Leer sinopsis completa"
+                             (lo decide SeriesFragment midiendo el layout del texto). -->
+                        <TextView
+                            android:id="@+id/series_synopsis"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="12dp"
+                            android:textColor="@color/text_primary"
+                            android:textSize="15sp"
+                            android:lineSpacingMultiplier="1.35"
+                            android:maxLines="2"
+                            android:ellipsize="end"
+                            android:alpha="0.85" />
+
+                        <TextView
+                            android:id="@+id/btn_synopsis_more"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="8dp"
+                            android:paddingHorizontal="12dp"
+                            android:paddingVertical="7dp"
+                            android:text="@string/synopsis_more"
+                            android:textColor="@color/accent_light"
+                            android:textSize="13sp"
+                            android:textStyle="bold"
+                            android:background="@drawable/card_focus_bg"
+                            android:focusable="true"
+                            android:focusableInTouchMode="true"
+                            android:nextFocusUp="@id/btn_continue"
+                            android:nextFocusDown="@id/episodes_recycler"
+                            android:visibility="gone" />
+
+                    </LinearLayout>
+                </LinearLayout>
+            </LinearLayout>
+
+            <!-- ══ SECCIÓN 2: episodios ══ -->
+            <LinearLayout
+                android:id="@+id/episodes_section"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:layout_marginTop="@dimen/series_section_gap"
+                android:paddingStart="@dimen/tv_safe_h"
+                android:paddingEnd="@dimen/tv_safe_h">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical"
+                    android:layout_marginBottom="10dp">
+
+                    <TextView
+                        android:id="@+id/episodes_header"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:textColor="@color/text_primary"
+                        android:textSize="20sp"
+                        android:textStyle="bold"
+                        android:text="@string/header_episodes" />
+
+                    <TextView
+                        android:id="@+id/watched_counter"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:textColor="#FF4CAF50"
+                        android:textSize="13sp"
+                        android:visibility="gone" />
+                </LinearLayout>
+
+                <androidx.recyclerview.widget.RecyclerView
+                    android:id="@+id/episode_blocks"
+                    android:layout_width="match_parent"
+                    android:layout_height="38dp"
+                    android:layout_marginBottom="10dp"
+                    android:focusable="true"
+                    android:descendantFocusability="afterDescendants"
+                    android:overScrollMode="never"
+                    android:visibility="gone" />
+
+                <!-- ⚠️ Alto ACOTADO desde el fragment (ver `fitGridHeight`): crece con el contenido
+                     hasta un tope de filas y a partir de ahí hace scroll dentro. Sin tope, One
+                     Piece dejaría *Series relacionadas* a 200 filas de distancia. -->
+                <androidx.recyclerview.widget.RecyclerView
+                    android:id="@+id/episodes_recycler"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:focusable="true"
+                    android:descendantFocusability="afterDescendants"
+                    android:clipToPadding="false"
+                    android:overScrollMode="never" />
+            </LinearLayout>
+
+            <!-- ══ SECCIÓN 3: relacionadas ══ -->
+            <LinearLayout
+                android:id="@+id/relations_section"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:layout_marginTop="@dimen/series_section_gap"
+                android:clipToPadding="false"
+                android:paddingStart="@dimen/tv_safe_h"
+                android:paddingEnd="@dimen/tv_safe_h"
+                android:visibility="gone">
+
+                <View
+                    android:id="@+id/relations_divider"
+                    android:layout_width="match_parent"
+                    android:layout_height="1dp"
+                    android:background="#33FFFFFF"
+                    android:layout_marginBottom="14dp" />
+
+                <TextView
+                    android:id="@+id/relations_header"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginBottom="6dp"
+                    android:textColor="@color/text_primary"
+                    android:textSize="20sp"
+                    android:textStyle="bold"
+                    android:text="@string/header_relations" />
+
+                <!-- Padding + márgenes negativos emparejados: la fila se ensancha hacia el margen
+                     de seguridad para que la escala de foco no recorte la primera tarjeta, pero las
+                     tarjetas siguen alineadas con el rótulo. -->
+                <androidx.recyclerview.widget.RecyclerView
+                    android:id="@+id/relations_recycler"
+                    android:layout_width="match_parent"
+                    android:layout_height="@dimen/relation_row_height"
+                    android:orientation="horizontal"
+                    android:layout_marginStart="-8dp"
+                    android:layout_marginEnd="-8dp"
+                    android:paddingStart="8dp"
+                    android:paddingEnd="8dp"
+                    android:paddingTop="12dp"
+                    android:paddingBottom="12dp"
+                    android:focusable="true"
+                    android:descendantFocusability="afterDescendants"
+                    android:clipToPadding="false"
+                    android:overScrollMode="never" />
+            </LinearLayout>
+        </LinearLayout>
+    </com.animeav1.ui.SectionScrollView>
+
+    <!-- Sinopsis completa. Overlay propio y no un AlertDialog, como el resto de modales de la app:
+         el foco por D-pad es predecible y el scroll del texto se controla con ARRIBA/ABAJO.
+         ⚠️ El NestedScrollView es FOCUSABLE a propósito: un texto no enfocable no se puede
+         recorrer con un mando, así que la sinopsis larga quedaría igual de inaccesible que antes.
+         Al llegar al final deja de consumir la tecla y el foco pasa solo al botón de cerrar. -->
+    <FrameLayout
+        android:id="@+id/synopsis_overlay"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="#E6000000"
+        android:visibility="gone">
+
+        <LinearLayout
+            android:layout_width="900dp"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center"
+            android:orientation="vertical"
+            android:background="@drawable/dialog_bg"
+            android:padding="28dp">
+
+            <TextView
+                android:id="@+id/synopsis_full_title"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:textColor="@color/text_primary"
+                android:textSize="20sp"
+                android:textStyle="bold"
+                android:maxLines="2"
+                android:ellipsize="end"
+                android:layout_marginBottom="14dp" />
+
+            <!-- ⚠️ El tope de altura lo pone SeriesFragment, no el XML: `android:maxHeight` es un
+                 atributo que solo implementan algunas vistas (ImageView, TextView…) y un
+                 NestedScrollView **lo ignora** — comprobado, el panel crecía con el texto hasta
+                 salirse de la pantalla, que es justo lo que este panel viene a arreglar. -->
+            <androidx.core.widget.NestedScrollView
+                android:id="@+id/synopsis_scroll"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:minHeight="120dp"
+                android:focusable="true"
+                android:scrollbars="vertical"
+                android:overScrollMode="never">
+
+                <TextView
+                    android:id="@+id/synopsis_full_text"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:textColor="@color/text_primary"
+                    android:textSize="15sp"
+                    android:lineSpacingMultiplier="1.4"
+                    android:alpha="0.9" />
+            </androidx.core.widget.NestedScrollView>
+
+            <Button
+                android:id="@+id/btn_synopsis_close"
+                android:layout_width="wrap_content"
+                android:layout_height="46dp"
+                android:layout_gravity="end"
+                android:layout_marginTop="18dp"
+                android:text="@string/close"
+                android:textSize="14sp"
+                android:textColor="@color/text_primary"
+                android:background="@drawable/btn_series_bg"
+                android:paddingHorizontal="28dp"
+                android:focusable="true" />
+        </LinearLayout>
+    </FrameLayout>
+
+    <!-- Loading overlay -->
+    <FrameLayout
+        android:id="@+id/loading_overlay"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="#88000000"
+        android:visibility="visible">
+        <ProgressBar
+            android:layout_width="64dp"
+            android:layout_height="64dp"
+            android:layout_gravity="center"
+            android:indeterminateTint="@color/accent"
+            android:contentDescription="@string/cd_loading" />
+    </FrameLayout>
+</FrameLayout>

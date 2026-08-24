@@ -1,0 +1,95 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Tarjeta de "Series relacionadas".
+
+  Sigue la convención de tarjeta del resto de la app (Catálogo, Mi Lista, Horario, Inicio): póster
+  arriba con la proporción real del arte, distintivos SOBRE el póster y el título DEBAJO, sobre el
+  fondo de la tarjeta. Antes tenía un lenguaje propio —el texto metido en una caja oscura pegada al
+  póster, a 10sp/9sp— que no se parecía a ninguna otra tarjeta y no se leía desde el sofá.
+
+  ⚠️ El póster es 2:3 (`relation_poster_height` = ancho × 1,5) y de altura FIJA. Antes se llevaba
+  "lo que sobrara" de una altura fija de tarjeta (`layout_weight="1"`), y eso tenía dos
+  consecuencias: salía casi cuadrado —`centerCrop` recortaba un tercio del alto del arte, justo la
+  franja del logotipo— y además cambiaba de tamaño según lo largo que fuera el título, así que las
+  tarjetas de una misma fila no coincidían.
+-->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/rel_card"
+    android:layout_width="@dimen/relation_card_width"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:background="@drawable/card_focus_bg"
+    android:focusable="true"
+    android:focusableInTouchMode="true"
+    android:clickable="true"
+    android:padding="4dp"
+
+    android:nextFocusUp="@id/episodes_recycler"
+    android:nextFocusDown="@id/rel_card">
+    <!-- ⚠️ Los dos `nextFocus` son a mano porque el algoritmo de foco de Android no acierta aquí:
+         ARRIBA se iba al panel izquierdo en vez de a la rejilla de episodios (queda más cerca en
+         vertical, aunque no esté alineada con la tarjeta), y ABAJO —donde no hay nada— se colaba
+         también en el panel. `nextFocusDown` apunta a la PROPIA tarjeta: el buscador de foco
+         devuelve la vista que ya lo tiene y la pulsación se queda en nada, que es lo correcto al
+         final de la pantalla. -->
+
+    <FrameLayout
+        android:layout_width="match_parent"
+        android:layout_height="@dimen/relation_poster_height">
+
+        <ImageView
+            android:id="@+id/rel_image"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:scaleType="centerCrop"
+            android:contentDescription="@null" />
+
+        <!-- Qué relación es (Precuela / Secuela / …): es LA información de esta tarjeta, así que va
+             en acento y arriba del todo. -->
+        <TextView
+            android:id="@+id/rel_type"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="top|start"
+            android:layout_margin="4dp"
+            android:background="@drawable/new_badge_bg"
+            android:paddingHorizontal="6dp"
+            android:paddingVertical="2dp"
+            android:textColor="#FFFFFF"
+            android:textSize="10sp"
+            android:textStyle="bold" />
+
+        <!-- El año va SOBRE el póster (y no en una línea propia debajo) para no gastar otra línea
+             de alto en un dato de apoyo: la fila entera vive dentro de la ficha, compitiendo por
+             sitio con la rejilla de episodios. -->
+        <TextView
+            android:id="@+id/rel_year"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="bottom|end"
+            android:layout_margin="4dp"
+            android:background="@drawable/meta_badge_bg"
+            android:paddingHorizontal="5dp"
+            android:paddingVertical="1dp"
+            android:textColor="@color/text_secondary"
+            android:textSize="10sp"
+            android:visibility="gone" />
+    </FrameLayout>
+
+    <!-- ⚠️ minLines=2 además de maxLines=2: sin reservar la segunda línea, una tarjeta de título
+         corto mide menos que su vecina y la fila sale escalonada (mismo criterio que el resto de
+         tarjetas de la app). -->
+    <TextView
+        android:id="@+id/rel_title"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:textColor="#DDDDDD"
+        android:textSize="12sp"
+        android:maxLines="2"
+        android:minLines="2"
+        android:ellipsize="end"
+        android:paddingTop="4dp"
+        android:paddingStart="2dp"
+        android:paddingEnd="2dp" />
+
+</LinearLayout>
