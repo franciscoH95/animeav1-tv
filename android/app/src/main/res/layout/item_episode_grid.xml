@@ -1,29 +1,49 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Episode card for grid layout -->
+<!--
+  Tile de episodio, con el fotograma del capítulo de fondo.
+
+  La miniatura NO viene de la API: se arma con el id de la serie y el número del episodio (ver
+  `AnimeImages`). Mide 220×124, así que en una TV 4K se estira; a este tamaño de tile es el precio
+  razonable por reconocer un episodio de un vistazo en vez de leer un número.
+
+  ⚠️ El número va sobre un degradado y no sobre la imagen pelada: un fotograma claro dejaba el
+  número blanco ilegible, y ~8% de las capturas son casi negras, así que tiene que leerse igual de
+  bien con y sin imagen.
+-->
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:id="@+id/episode_tile"
     android:layout_width="match_parent"
-    android:layout_height="72dp"
+    android:layout_height="@dimen/episode_tile_height"
     android:background="@drawable/card_background"
     android:focusable="true"
-    android:focusableInTouchMode="true"
-    android:gravity="center">
+    android:focusableInTouchMode="true">
 
-    <LinearLayout
+    <ImageView
+        android:id="@+id/ep_thumb"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        android:orientation="vertical"
-        android:gravity="center"
-        android:padding="4dp">
+        android:scaleType="centerCrop"
+        android:contentDescription="@null" />
 
-        <TextView
-            android:id="@+id/ep_number"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:textColor="@color/text_primary"
-            android:textSize="18sp"
-            android:textStyle="bold" />
-    </LinearLayout>
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="@drawable/gradient_overlay" />
+
+    <TextView
+        android:id="@+id/ep_number"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="bottom|start"
+        android:layout_marginStart="8dp"
+        android:layout_marginBottom="6dp"
+        android:textColor="@color/text_primary"
+        android:textSize="18sp"
+        android:textStyle="bold"
+        android:shadowColor="#CC000000"
+        android:shadowDx="0"
+        android:shadowDy="1"
+        android:shadowRadius="4" />
 
     <!-- Watched checkmark overlay -->
     <TextView
@@ -37,7 +57,12 @@
         android:textSize="12sp"
         android:textStyle="bold"
         android:gravity="center"
+        android:shadowColor="#CC000000"
+        android:shadowDx="0"
+        android:shadowDy="1"
+        android:shadowRadius="4"
         android:visibility="gone" />
+
     <!-- "A medias": franja inferior con lo que llevas del episodio. Sale de episode_progress, así
          que un episodio empezado y no terminado se distingue de uno intacto sin abrirlo. -->
     <View
@@ -59,6 +84,10 @@
         android:text="●"
         android:textColor="@color/accent_light"
         android:textSize="10sp"
+        android:shadowColor="#CC000000"
+        android:shadowDx="0"
+        android:shadowDy="1"
+        android:shadowRadius="4"
         android:visibility="gone" />
 
 </FrameLayout>

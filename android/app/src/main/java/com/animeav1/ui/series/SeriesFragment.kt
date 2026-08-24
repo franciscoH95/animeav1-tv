@@ -558,6 +558,7 @@ class SeriesFragment : Fragment() {
         val columns = columnsFor(usable)
         episodeAdapter = EpisodeGridAdapter(
             episodes         = shown,
+            seriesId         = series.id,
             watchedSet       = watched,
             allNumbers       = series.episodes.map { it.number },
             onClick          = { ep -> launchPlayer(series, ep.number) },

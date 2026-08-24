@@ -3,9 +3,13 @@ package com.animeav1.ui.series
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.widget.ImageView
 import android.widget.TextView
 import androidx.recyclerview.widget.RecyclerView
+import coil.dispose
+import coil.load
 import com.animeav1.R
+import com.animeav1.data.AnimeImages
 import com.animeav1.data.model.EpisodeRef
 
 /**
@@ -16,6 +20,11 @@ import com.animeav1.data.model.EpisodeRef
  */
 class EpisodeGridAdapter(
     private val episodes: List<EpisodeRef>,
+    /**
+     * Id de la SERIE, para armar la miniatura de cada episodio (ver [AnimeImages.episodeThumb]).
+     * 0 = no se sabe y los tiles se quedan sin imagen, que es como estaban antes.
+     */
+    private val seriesId: Int = 0,
     private var watchedSet: Set<Int> = emptySet(),
     /**
      * Números de **toda la serie**, no solo los del bloque visible. ⚠️ El "siguiente a ver" es una
@@ -68,6 +77,7 @@ class EpisodeGridAdapter(
     private var nextNumber: Int = -1
 
     inner class VH(val root: View) : RecyclerView.ViewHolder(root) {
+        val thumb: ImageView  = root.findViewById(R.id.ep_thumb)
         val number: TextView  = root.findViewById(R.id.ep_number)
         val watched: TextView = root.findViewById(R.id.ep_watched)
         val progressBar: View = root.findViewById(R.id.ep_progress)
@@ -107,12 +117,35 @@ class EpisodeGridAdapter(
     override fun onBindViewHolder(holder: VH, position: Int) {
         val ep = episodes[position]
         holder.number.text = ep.number.toString()
+        bindThumb(holder, ep)
         holder.root.nextFocusDownId =
             if (downFocusId != View.NO_ID && position >= itemCount - spanCount) downFocusId
             else View.NO_ID
         holder.root.nextFocusUpId =
             if (upFocusId != View.NO_ID && position < spanCount) upFocusId else View.NO_ID
         bindWatched(holder, ep)
+    }
+
+    /**
+     * El fotograma del episodio.
+     *
+     * ⚠️ Se limpia la imagen ANTES de pedir la nueva: cuando el CDN no tiene la miniatura responde
+     * **403**, y sin limpiar el tile reciclado se quedaría enseñando el fotograma del episodio
+     * anterior — un error que se ve como "la rejilla miente", no como una imagen que falta.
+     */
+    private fun bindThumb(holder: VH, ep: EpisodeRef) {
+        holder.thumb.dispose()
+        holder.thumb.setImageDrawable(null)
+        if (seriesId <= 0) return
+        holder.thumb.load(AnimeImages.episodeThumb(seriesId, ep.number)) { crossfade(true) }
+    }
+
+    override fun onViewRecycled(holder: VH) {
+        // Un tile que sale de pantalla no tiene por qué seguir descargando: en One Piece son 100
+        // peticiones por bloque y el usuario pasa de largo la mayoría.
+        holder.thumb.dispose()
+        holder.thumb.setImageDrawable(null)
+        super.onViewRecycled(holder)
     }
 
     private fun bindWatched(holder: VH, ep: EpisodeRef) {

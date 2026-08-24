@@ -57,7 +57,7 @@ class CatalogAnimeAdapter(
         } else {
             holder.type.visibility = View.GONE
         }
-        val coverUrl = "https://cdn.animeav1.com/covers/${anime.id}.jpg"
+        val coverUrl = anime.coverUrl
         holder.cover.load(coverUrl) {
             crossfade(true)
             placeholder(R.color.placeholder_color)

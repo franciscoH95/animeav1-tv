@@ -7,7 +7,7 @@ data class Anime(
     val category: String,
     val synopsis: String = ""
 ) {
-    val coverUrl: String get() = "https://cdn.animeav1.com/covers/$id.jpg"
+    val coverUrl: String get() = com.animeav1.data.AnimeImages.cover(id)
 }
 
 data class Series(
@@ -40,8 +40,8 @@ data class Series(
         3    -> "Cancelado"
         else -> "Desconocido"
     }
-    val coverUrl:    String get() = "https://cdn.animeav1.com/covers/$id.jpg"
-    val backdropUrl: String get() = "https://cdn.animeav1.com/backdrops/$id.jpg"
+    val coverUrl:    String get() = com.animeav1.data.AnimeImages.cover(id)
+    val backdropUrl: String get() = com.animeav1.data.AnimeImages.backdrop(id)
 }
 
 data class EpisodeRef(val number: Int, val id: Int)
@@ -94,7 +94,7 @@ data class Relation(
         10   -> "Relacionado"
         else -> "Relacionado"
     }
-    val coverUrl: String get() = "https://cdn.animeav1.com/covers/$id.jpg"
+    val coverUrl: String get() = com.animeav1.data.AnimeImages.cover(id)
 }
 
 data class ScheduleItem(
@@ -106,6 +106,6 @@ data class ScheduleItem(
     val latestEpisodeDate: String,
     val dayOfWeek: String
 ) {
-    val coverUrl: String get() = "https://cdn.animeav1.com/covers/$id.jpg"
+    val coverUrl: String get() = com.animeav1.data.AnimeImages.cover(id)
 }
 

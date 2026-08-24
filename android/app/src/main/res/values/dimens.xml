@@ -40,4 +40,7 @@
     <dimen name="series_poster_height">204dp</dimen>
     <dimen name="series_info_top">48dp</dimen>
     <dimen name="series_section_gap">20dp</dimen>
+    <!-- Alto del tile de episodio. Con el ancho objetivo de `columnsFor` (~104dp) queda cerca de
+         16:9, que es la proporción de las miniaturas del CDN, así que `centerCrop` recorta poco. -->
+    <dimen name="episode_tile_height">72dp</dimen>
 </resources>

@@ -46,6 +46,8 @@ data/
   AiringSchedule.kt     mitad PURA del cálculo del PRÓXIMO episodio (ancla + cadencia); ver abajo
   MediaType.kt          mitad PURA que DEDUCE el tipo (el sitio llama "TV Anime" hasta a las
                         películas); ver "El tipo que publica el sitio está mal"
+  AnimeImages.kt        mitad PURA: las URLs del CDN (portada, backdrop y MINIATURA por episodio),
+                        que son convenciones y no datos de la API
   UpdateManifest.kt     mitad PURA del OTA: leer update.json y decidir si hay algo que ofrecer
   UpdateRepository.kt   descarga del manifiesto y del APK, con verificación SHA-256
   ApkInstaller.kt       instalación vía PackageInstaller (+ InstallResultReceiver)
@@ -66,7 +68,7 @@ ui/
   update/               UpdateActivity ("Hay una versión nueva" → descarga → instala)
 AnimeApp.kt             Application; AnimeRepository.init(); appScope (ver más abajo)
 
-app/src/test/            tests JVM puros (JUnit4), 93 en total. Fixtures REALES capturados del
+app/src/test/            tests JVM puros (JUnit4), 97 en total. Fixtures REALES capturados del
                          sitio en test/resources/: catalogo__data.json, mp4upload-embed.html y
                          episodio__data.json (dandadan ep.1 — el único con SUB *y* DUB). Cubren
                          SvelteKitDecoder, StreamUrlParser, EmbedParser, MediaType, UpdateManifest
@@ -339,6 +341,11 @@ lleva el `EmbedServer` entero. Si añades comparaciones por nombre, vuelves a me
   "Episodio N+1" y cuenta atrás de **10s** (`startNextCountdown`) → `goToNextEpisode`. Botones **Ver ahora**
   / **Cancelar** (BACK = cancelar). `nextCardHandled` evita re-mostrarla; `releasePlayer` cancela la cuenta
   atrás (no auto-avanza estando en background). En `dispatchKeyEvent` hay una rama de modal para el card.
+- La **tarjeta de siguiente episodio** enseña el fotograma de ESE episodio
+  (`AnimeImages.episodeThumbFromCover`, derivado de la portada porque el reproductor recibe la URL y
+  no el id de la serie). Antes ponía el backdrop de la serie, o sea la misma imagen para los 1172
+  episodios de One Piece. Si el CDN no lo tiene (403) se cae a la imagen de la serie, que es lo que
+  había antes.
 - **Panel de servidores** (DPAD-ARRIBA o botón ☰): lista lateral **agrupada por pista de audio**, con
   cabeceras `SUBTITULADO` / `DOBLADO` (`item_server_header.xml`); al elegir, re-resuelve y reproduce desde
   la misma posición. `ServerAdapter` tiene por eso **dos view types**: las cabeceras son
@@ -1173,6 +1180,20 @@ pulsaciones de ABAJO para llegar al final. Al abrir la ficha se muestra el bloqu
 **primer episodio no visto**, no el primero. Cada tile lleva una barra de progreso
 (`episode_progress` de ese perfil, vía `LocalRepository.progressForSeries`) y el siguiente a ver va
 marcado.
+⚠️ **Cada tile enseña el fotograma de SU episodio**, y esa imagen no la publica la API: se arma por
+convención con el id de la serie y el **número** del episodio (`AnimeImages.episodeThumb`), igual que
+las portadas. Va por número y **no por el id del episodio**, que es el error fácil porque el resto
+del CDN va por id: para la película de Digimon (serie 1280, episodio id 20309, número 1),
+`/screenshots/1280/1.jpg` devuelve la imagen y `/screenshots/1280/20309.jpg` devuelve **403**.
+Lo medido antes de fiarse: son **220×124** y pesan 3-8 KB (no hay versión mayor: `?w=640`, `_large`,
+`@2x` y `.webp` no existen), la cobertura fue de 36/36 en 6 series —incluidos los episodios 1, 500 y
+1175 de One Piece— y un ~8% son fotogramas **casi negros**, que cargan bien y se ven como un
+rectángulo oscuro. ⚠️ Cuando falta, el CDN responde **403 con HTML**, no un 404 de imagen, así que el
+tile se limpia (`dispose()` + `setImageDrawable(null)`) ANTES de pedir la nueva: sin eso el tile
+reciclado se quedaba enseñando el fotograma del episodio anterior, que no se lee como "falta una
+imagen" sino como "la rejilla miente". El número va sobre un degradado y con sombra porque tiene que
+leerse igual en un fotograma blanco y en uno negro.
+
 ⚠️ Tres cosas que el bloque **no** puede decidir por su cuenta, porque son de la SERIE: el "siguiente
 a ver" (`EpisodeGridAdapter.allNumbers`, si no cada bloque pintaba su propio primer-no-visto como si
 fuera el siguiente), el denominador de "✓ vistos/total" (`episodesTotal`, si no One Piece con 700

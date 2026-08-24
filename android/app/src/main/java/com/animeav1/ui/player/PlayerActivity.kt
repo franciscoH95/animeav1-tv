@@ -31,6 +31,7 @@ import androidx.media3.ui.PlayerView
 import coil.load
 import com.animeav1.AnimeApp
 import com.animeav1.R
+import com.animeav1.data.AnimeImages
 import com.animeav1.data.AnimeRepository
 import com.animeav1.data.LocalRepository
 import com.animeav1.data.StreamUrlParser
@@ -1001,8 +1002,20 @@ class PlayerActivity : FragmentActivity() {
         nextCardHandled = true     // show only once per episode (don't re-trigger after Cancelar)
         hideControls()
         nextEpTitle.text = "Episodio ${number + 1}"
-        val img = backdropUrl.ifBlank { coverUrl }
-        if (img.isNotBlank()) nextEpThumb.load(img) { crossfade(true) }
+        // El fotograma del episodio que viene, no la imagen de la serie: la tarjeta enseñaba el
+        // mismo backdrop para los 1172 episodios de One Piece. Si el CDN no lo tiene responde 403,
+        // y entonces se cae a la imagen de la serie, que es lo que había antes.
+        val fallback = backdropUrl.ifBlank { coverUrl }
+        val thumb = AnimeImages.episodeThumbFromCover(coverUrl, number + 1)
+        when {
+            thumb.isNotBlank() -> nextEpThumb.load(thumb) {
+                crossfade(true)
+                listener(onError = { _, _ ->
+                    if (fallback.isNotBlank()) nextEpThumb.load(fallback) { crossfade(true) }
+                })
+            }
+            fallback.isNotBlank() -> nextEpThumb.load(fallback) { crossfade(true) }
+        }
         nextEpisodeCard.visibility = View.VISIBLE
         btnPlayNext.post { btnPlayNext.requestFocus() }
         startNextCountdown()
