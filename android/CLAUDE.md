@@ -1407,10 +1407,17 @@ para no bajarse 9 MB que el aparato no puede instalar.
   respuesta correcta, o sea que serviría un manifiesto rancio durante cinco minutos —justo el fichero
   cuyo trabajo es decir la verdad ahora— y guardaría cada APK de 9 MB en su caché de disco.
 - ⚠️ Desde API 26 el permiso `REQUEST_INSTALL_PACKAGES` **no basta**: el usuario tiene que autorizar
-  la app en "orígenes desconocidos" (`canRequestPackageInstalls`). Se comprueba ANTES de descargar,
-  porque si no la sesión se rechaza al final, tras bajarse el APK entero y sin decir por qué. En una
-  TV se abre `ACTION_MANAGE_UNKNOWN_APP_SOURCES` (comprobado: sale la pantalla del sistema con la app
-  en la lista).
+  la app en "instalar apps desconocidas" (`canRequestPackageInstalls`), y se concede **por
+  aplicación**. Se comprueba ANTES de descargar, porque si no la sesión se rechaza al final, tras
+  bajarse el APK entero y sin decir por qué. En una TV se abre `ACTION_MANAGE_UNKNOWN_APP_SOURCES`
+  (comprobado: sale la pantalla del sistema con la app en la lista).
+  ⚠️ **Y el motivo se queda ESCRITO en la pantalla, con el botón cambiado a "Dar permiso".** Antes
+  era un Toast y un `startActivity` dentro de `runCatching`: si el intent no lo resolvía nadie —pasa
+  en TV de fabricante— el aviso se iba solo a los segundos y no ocurría nada más, así que desde el
+  sofá la app "no hacía nada" al pulsar Actualizar. Si la pantalla de ajustes no existe se explica el
+  camino a mano (Ajustes → Aplicaciones → Acceso especial) en vez de fingir que se abrió. Al volver,
+  `onResume` vuelve a mirar: si ya está concedido, el aviso desaparece y el botón vuelve a
+  "Actualizar" — sin eso, quien acaba de dar el permiso se encuentra la pantalla igual que la dejó.
 - ⚠️ `STATUS_PENDING_USER_ACTION` **no es un error**, es el caso normal: `InstallResultReceiver`
   tiene que lanzar el intent de confirmación que devuelve el sistema. Sin eso la instalación se queda
   esperando y desde fuera parece que "Actualizar" no hizo nada.

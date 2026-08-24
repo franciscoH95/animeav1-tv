@@ -36,6 +36,9 @@ class UpdateActivity : AppCompatActivity() {
     private lateinit var btnLater: Button
     private var job: Job? = null
 
+    /** La pantalla está pidiendo el permiso de instalar, no ofreciendo la descarga. */
+    private var needsPermission = false
+
     /** Dónde cae el APK. En la caché a propósito: si algo va mal, el sistema puede tirarlo él. */
     private val apkFile by lazy { File(cacheDir, "update.apk") }
 
@@ -61,6 +64,11 @@ class UpdateActivity : AppCompatActivity() {
         btnLater.setOnClickListener { finish() }
     }
 
+    override fun onResume() {
+        super.onResume()
+        refreshPermissionState()
+    }
+
     override fun onStart() {
         super.onStart()
         // El foco arranca en "Actualizar ahora": es a lo que viene esta pantalla, y salir sigue
@@ -69,13 +77,9 @@ class UpdateActivity : AppCompatActivity() {
     }
 
     private fun start() {
-        // ⚠️ Primero el permiso. Desde API 26 sin "orígenes desconocidos" la instalación se rechaza
-        // AL FINAL, después de bajarse el APK entero y sin decir por qué.
-        if (!ApkInstaller.canInstall(this)) {
-            Toast.makeText(this, R.string.update_needs_permission, Toast.LENGTH_LONG).show()
-            runCatching { startActivity(ApkInstaller.permissionSettingsIntent(this)) }
-            return
-        }
+        // ⚠️ Primero el permiso. Desde API 26 sin "instalar apps desconocidas" la instalación se
+        // rechaza AL FINAL, después de bajarse el APK entero y sin decir por qué.
+        if (!ApkInstaller.canInstall(this)) { askPermission(); return }
         if (job != null) return
         setBusy(true)
         job = lifecycleScope.launch {
@@ -93,6 +97,36 @@ class UpdateActivity : AppCompatActivity() {
             // nada: se cierra para no reaparecer detrás si el usuario cancela el instalador.
             else finish()
         }
+    }
+
+    /**
+     * Pide el permiso de instalar, y lo deja DICHO en pantalla.
+     *
+     * ⚠️ Antes era un Toast y un `startActivity` en `runCatching`: si el intent no lo resolvía nadie
+     * —pasa en algunas TV de fabricante— el aviso se iba solo a los pocos segundos y no ocurría
+     * nada más, así que desde el sofá la app "no hacía nada" al pulsar Actualizar. Ahora el motivo
+     * se queda escrito, el botón cambia a DAR PERMISO, y si la pantalla de ajustes no existe se
+     * explica el camino a mano en vez de fingir que se abrió.
+     */
+    private fun askPermission() {
+        needsPermission = true
+        status.visibility = View.VISIBLE
+        status.text = getString(R.string.update_needs_permission)
+        btnNow.setText(R.string.update_permission)
+        val opened = runCatching { startActivity(ApkInstaller.permissionSettingsIntent(this)) }.isSuccess
+        if (!opened) status.text = getString(R.string.update_permission_manual)
+    }
+
+    /**
+     * Al volver de Ajustes se vuelve a mirar: si ya está concedido, la pantalla deja de pedirlo y
+     * el botón vuelve a ser "Actualizar". Sin esto, quien acaba de dar el permiso se encuentra la
+     * pantalla igual que la dejó y no sabe si sirvió de algo.
+     */
+    private fun refreshPermissionState() {
+        if (!needsPermission || !ApkInstaller.canInstall(this)) return
+        needsPermission = false
+        status.visibility = View.GONE
+        btnNow.setText(R.string.update_now)
     }
 
     private fun fail(msgRes: Int) {

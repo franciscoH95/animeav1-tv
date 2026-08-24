@@ -194,7 +194,8 @@
     <string name="update_permission">DAR PERMISO</string>
     <string name="update_downloading">Descargando… %1$d%%</string>
     <string name="update_installing">Preparando la instalación…</string>
-    <string name="update_needs_permission">Android tiene que dejar que AnimeAV1 instale aplicaciones. Se abre el ajuste; al volver, pulsa Actualizar otra vez.</string>
+    <string name="update_needs_permission">Para instalar la actualización, Android pide que autorices a AnimeAV1 a instalar aplicaciones. Se abre el ajuste: actívalo y vuelve con ATRÁS.</string>
+    <string name="update_permission_manual">Tu TV no abre ese ajuste desde aquí. Ve a Ajustes → Aplicaciones → Acceso especial → Instalar aplicaciones desconocidas y activa AnimeAV1.</string>
     <string name="update_download_failed">No se pudo descargar la actualización</string>
     <string name="update_install_failed">No se pudo instalar la actualización</string>
 
