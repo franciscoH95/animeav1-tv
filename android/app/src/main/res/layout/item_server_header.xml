@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Cabecera de pista de audio del panel de servidores (Subtitulado / Doblado).
+     focusable="false" a propósito: el D-pad tiene que saltar de servidor a servidor
+     sin pararse en los rótulos. -->
+<TextView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/track_header"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:paddingStart="4dp"
+    android:paddingEnd="4dp"
+    android:paddingTop="6dp"
+    android:paddingBottom="8dp"
+    android:textColor="@color/accent_light"
+    android:textSize="11sp"
+    android:textStyle="bold"
+    android:letterSpacing="0.15"
+    android:maxLines="1"
+    android:focusable="false"
+    android:importantForAccessibility="yes" />
