@@ -1,0 +1,91 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:background="@color/bg_dark">
+
+    <!-- Cabecera de la sección: solo los filtros.
+         La búsqueda ya no está aquí: vive en la barra global (junto al avatar), así que se puede
+         buscar desde cualquier pestaña y no duplicada en esta.
+         @id/section_menu es lo que MainActivity usa para el nivel intermedio de BACK. -->
+    <LinearLayout
+        android:id="@+id/section_menu"
+        android:layout_width="match_parent"
+        android:layout_height="56dp"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:paddingStart="@dimen/tv_safe_h"
+        android:paddingEnd="@dimen/tv_safe_h"
+        android:background="#1A1A1A">
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/tab_catalog"
+            android:drawableStart="@drawable/ic_catalog"
+            android:drawablePadding="8dp"
+            android:gravity="center_vertical"
+            android:textColor="@color/text_primary"
+            android:textSize="20sp"
+            android:textStyle="bold"
+            android:layout_marginEnd="20dp" />
+
+        <androidx.recyclerview.widget.RecyclerView
+            android:id="@+id/filter_recycler"
+            android:layout_width="0dp"
+            android:layout_height="36dp"
+            android:layout_weight="1"
+            android:orientation="horizontal"
+            android:focusable="true"
+            android:descendantFocusability="afterDescendants"
+            android:clipToPadding="false"
+            android:clipChildren="false"
+            android:overScrollMode="never" />
+
+    </LinearLayout>
+
+    <!-- Anime grid -->
+    <FrameLayout
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1">
+
+        <androidx.recyclerview.widget.RecyclerView
+            android:id="@+id/anime_grid"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:paddingHorizontal="@dimen/tv_safe_h"
+            android:paddingVertical="@dimen/tv_safe_v"
+            android:clipToPadding="false"
+            android:overScrollMode="never"
+            android:focusable="true"
+            android:descendantFocusability="afterDescendants" />
+
+        <!-- Loading skeleton (placeholder cards; the container pulses while loading) -->
+        <androidx.recyclerview.widget.RecyclerView
+            android:id="@+id/skeleton_grid"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:paddingHorizontal="@dimen/tv_safe_h"
+            android:paddingVertical="@dimen/tv_safe_v"
+            android:clipToPadding="false"
+            android:focusable="false"
+            android:visibility="gone" />
+
+        <TextView
+            android:id="@+id/empty_text"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center"
+            android:gravity="center"
+            android:drawableTop="@drawable/ic_empty"
+            android:drawablePadding="14dp"
+            android:text="@string/no_results"
+            android:textColor="@color/text_secondary"
+            android:textSize="17sp"
+            android:visibility="gone" />
+
+    </FrameLayout>
+
+</LinearLayout>

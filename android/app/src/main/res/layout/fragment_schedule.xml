@@ -1,0 +1,120 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:background="@color/bg_dark">
+
+    <!-- Cabecera de la sección: título + días. @id/section_menu es lo que MainActivity usa para el
+         nivel intermedio de BACK. -->
+    <LinearLayout
+        android:id="@+id/section_menu"
+        android:layout_width="match_parent"
+        android:layout_height="56dp"
+        android:orientation="horizontal"
+        android:paddingHorizontal="@dimen/tv_safe_h"
+        android:gravity="center_vertical">
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/header_schedule"
+            android:drawableStart="@drawable/ic_schedule"
+            android:drawablePadding="8dp"
+            android:gravity="center_vertical"
+            android:textColor="@color/text_primary"
+            android:textSize="20sp"
+            android:textStyle="bold"
+            android:layout_marginEnd="20dp" />
+
+        <!-- Day tabs scrollable row -->
+        <HorizontalScrollView
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="1"
+            android:scrollbars="none"
+            android:fillViewport="false">
+
+            <LinearLayout
+                android:id="@+id/day_tabs"
+                android:layout_width="wrap_content"
+                android:layout_height="match_parent"
+                android:orientation="horizontal"
+                android:gravity="center_vertical" />
+        </HorizontalScrollView>
+
+    </LinearLayout>
+
+    <!-- Thin accent line under tabs -->
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="2dp"
+        android:background="@color/accent_line" />
+
+    <!-- Content area: loading + recycler -->
+    <FrameLayout
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1">
+
+        <!-- Empty / error state (+ retry, shown only on error) -->
+        <LinearLayout
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center"
+            android:orientation="vertical"
+            android:gravity="center">
+
+            <TextView
+                android:id="@+id/sched_empty"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:drawableTop="@drawable/ic_empty"
+                android:drawablePadding="14dp"
+                android:text="@string/schedule_empty"
+                android:textColor="@color/text_secondary"
+                android:textSize="17sp"
+                android:gravity="center"
+                android:visibility="gone" />
+
+            <Button
+                android:id="@+id/sched_retry"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="18dp"
+                android:background="@drawable/tab_background"
+                android:focusable="true"
+                android:paddingHorizontal="24dp"
+                android:text="@string/retry"
+                android:textColor="@color/text_primary"
+                android:visibility="gone" />
+        </LinearLayout>
+
+        <!-- Loading skeleton (same pulsing card grid as the catalog) -->
+        <androidx.recyclerview.widget.RecyclerView
+            android:id="@+id/sched_skeleton"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:paddingHorizontal="@dimen/tv_safe_h"
+            android:paddingVertical="@dimen/tv_safe_v"
+            android:clipToPadding="false"
+            android:overScrollMode="never"
+            android:focusable="false"
+            android:visibility="visible" />
+
+        <!-- Cards grid -->
+        <androidx.recyclerview.widget.RecyclerView
+            android:id="@+id/sched_recycler"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:paddingHorizontal="@dimen/tv_safe_h"
+            android:paddingVertical="@dimen/tv_safe_v"
+            android:clipToPadding="false"
+            android:overScrollMode="never"
+            android:focusable="true"
+            android:descendantFocusability="afterDescendants"
+            android:visibility="gone" />
+
+    </FrameLayout>
+
+</LinearLayout>

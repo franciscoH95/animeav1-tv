@@ -1,0 +1,81 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:background="@drawable/card_focus_bg"
+    android:focusable="true"
+    android:focusableInTouchMode="true"
+    android:clickable="true"
+    android:padding="4dp">
+
+    <!-- Cover with the latest-episode badge -->
+    <FrameLayout
+        android:layout_width="match_parent"
+        android:layout_height="@dimen/poster_card_height">
+
+        <ImageView
+            android:id="@+id/sched_image"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:scaleType="centerCrop"
+            android:contentDescription="@null" />
+
+        <TextView
+            android:id="@+id/sched_episode"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="bottom|start"
+            android:layout_margin="4dp"
+            android:background="#CC000000"
+            android:textColor="#FFFFFF"
+            android:textSize="11sp"
+            android:paddingLeft="5dp"
+            android:paddingRight="5dp"
+            android:paddingTop="2dp"
+            android:paddingBottom="2dp"
+            android:visibility="gone" />
+    </FrameLayout>
+
+    <!-- Full title -->
+    <TextView
+        android:id="@+id/sched_title"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:textColor="#DDDDDD"
+        android:textSize="14sp"
+        android:maxLines="2"
+        android:minLines="2"
+        android:ellipsize="end"
+        android:paddingTop="4dp"
+        android:paddingStart="2dp"
+        android:paddingEnd="2dp" />
+
+    <!-- Type -->
+    <TextView
+        android:id="@+id/sched_category"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:textColor="@color/text_secondary"
+        android:textSize="12sp"
+        android:maxLines="1"
+        android:ellipsize="end"
+        android:paddingStart="2dp"
+        android:paddingTop="1dp"
+        android:visibility="gone" />
+
+    <!-- Air date -->
+    <TextView
+        android:id="@+id/sched_date"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:textColor="#888888"
+        android:textSize="12sp"
+        android:maxLines="1"
+        android:ellipsize="end"
+        android:paddingStart="2dp"
+        android:paddingTop="1dp"
+        android:paddingBottom="2dp"
+        android:visibility="gone" />
+
+</LinearLayout>

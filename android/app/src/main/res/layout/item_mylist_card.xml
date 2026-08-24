@@ -1,0 +1,88 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:background="@drawable/card_focus_bg"
+    android:focusable="true"
+    android:focusableInTouchMode="true"
+    android:clickable="true"
+    android:padding="4dp">
+
+    <!-- Cover wrapped to overlay the watched-count badge -->
+    <FrameLayout
+        android:layout_width="match_parent"
+        android:layout_height="@dimen/poster_card_height">
+
+        <ImageView
+            android:id="@+id/mylist_cover"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:scaleType="centerCrop"
+            android:contentDescription="@null" />
+
+        <!-- Badge: shown only when at least 1 episode is watched -->
+        <TextView
+            android:id="@+id/mylist_watched_badge"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="bottom|start"
+            android:layout_margin="4dp"
+            android:background="#CC000000"
+            android:textColor="#FFFFFF"
+            android:textSize="11sp"
+            android:paddingLeft="5dp"
+            android:paddingRight="5dp"
+            android:paddingTop="2dp"
+            android:paddingBottom="2dp"
+            android:visibility="gone" />
+
+        <!-- "NUEVO": airing series with unwatched new episodes -->
+        <TextView
+            android:id="@+id/mylist_new_badge"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="top|end"
+            android:layout_margin="4dp"
+            android:background="@drawable/new_badge_bg"
+            android:text="@string/new_badge"
+            android:textColor="#FFFFFF"
+            android:textSize="9sp"
+            android:textStyle="bold"
+            android:paddingLeft="6dp"
+            android:paddingRight="6dp"
+            android:paddingTop="2dp"
+            android:paddingBottom="2dp"
+            android:visibility="gone" />
+    </FrameLayout>
+
+    <!-- Full title (no truncation) -->
+    <TextView
+        android:id="@+id/mylist_title"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:textColor="#DDDDDD"
+        android:textSize="14sp"
+        android:maxLines="2"
+        android:minLines="2"
+        android:ellipsize="end"
+        android:paddingTop="4dp"
+        android:paddingStart="2dp"
+        android:paddingEnd="2dp" />
+
+    <!-- Year · status -->
+    <TextView
+        android:id="@+id/mylist_meta"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:textColor="@color/text_secondary"
+        android:textSize="12sp"
+        android:maxLines="2"
+        android:ellipsize="end"
+        android:paddingStart="2dp"
+        android:paddingTop="1dp"
+        android:paddingBottom="2dp"
+        android:visibility="gone" />
+
+</LinearLayout>

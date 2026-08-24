@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:focusable="true"
+    android:focusableInTouchMode="true"
+    android:clickable="true"
+    android:background="@drawable/card_focus_bg"
+    android:padding="4dp">
+
+    <ImageView
+        android:id="@+id/anime_cover"
+        android:layout_width="match_parent"
+        android:layout_height="@dimen/poster_card_height"
+        android:scaleType="centerCrop"
+        android:adjustViewBounds="false"
+        android:contentDescription="@null" />
+
+    <TextView
+        android:id="@+id/anime_title"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:textColor="#DDDDDD"
+        android:textSize="14sp"
+        android:maxLines="2"
+        android:minLines="2"
+        android:ellipsize="end"
+        android:paddingTop="4dp"
+        android:paddingStart="2dp"
+        android:paddingEnd="2dp" />
+
+    <!-- Type (TV Anime / Película / OVA …) -->
+    <TextView
+        android:id="@+id/anime_type"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:textColor="@color/text_secondary"
+        android:textSize="12sp"
+        android:maxLines="1"
+        android:ellipsize="end"
+        android:paddingStart="2dp"
+        android:paddingTop="1dp"
+        android:paddingBottom="2dp"
+        android:visibility="gone" />
+
+</LinearLayout>

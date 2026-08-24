@@ -1,0 +1,109 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/bg_dark">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:orientation="vertical">
+
+        <!-- Search bar -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="72dp"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:background="#1A1A1A"
+            android:paddingHorizontal="@dimen/tv_safe_h">
+
+            <ImageView
+                android:layout_width="28dp"
+                android:layout_height="28dp"
+                android:src="@drawable/ic_search"
+                android:contentDescription="@string/search"
+                android:alpha="0.8" />
+
+            <EditText
+                android:id="@+id/search_input"
+                android:layout_width="0dp"
+                android:layout_height="48dp"
+                android:layout_weight="1"
+                android:layout_marginStart="16dp"
+                android:hint="@string/search_hint"
+                android:textColorHint="#777777"
+                android:textColor="#FFFFFF"
+                android:textSize="18sp"
+                android:background="@drawable/search_bar_bg"
+                android:paddingHorizontal="18dp"
+                android:imeOptions="actionSearch"
+                android:inputType="text"
+                android:singleLine="true"
+                android:focusable="true"
+                android:focusableInTouchMode="true" />
+        </LinearLayout>
+
+        <!-- Hairline under the search bar -->
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="1dp"
+            android:background="#262630" />
+
+        <!-- Live results count -->
+        <TextView
+            android:id="@+id/search_count"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:paddingHorizontal="@dimen/tv_safe_h"
+            android:paddingTop="16dp"
+            android:paddingBottom="4dp"
+            android:textColor="@color/text_secondary"
+            android:textSize="14sp"
+            android:focusable="false"
+            android:visibility="gone" />
+
+        <!-- Results / states -->
+        <FrameLayout
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1">
+
+            <androidx.recyclerview.widget.RecyclerView
+                android:id="@+id/search_results"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:paddingHorizontal="@dimen/tv_safe_h"
+                android:paddingTop="8dp"
+                android:paddingBottom="@dimen/tv_safe_v"
+                android:clipToPadding="false"
+                android:focusable="true"
+                android:descendantFocusability="afterDescendants"
+                android:visibility="gone" />
+
+            <!-- Loading skeleton (placeholder cards; the grid pulses while searching) -->
+            <androidx.recyclerview.widget.RecyclerView
+                android:id="@+id/search_skeleton"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:paddingHorizontal="@dimen/tv_safe_h"
+                android:paddingTop="8dp"
+                android:paddingBottom="@dimen/tv_safe_v"
+                android:clipToPadding="false"
+                android:focusable="false"
+                android:visibility="gone" />
+
+            <TextView
+                android:id="@+id/search_hint"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity="center"
+                android:gravity="center"
+                android:drawableTop="@drawable/ic_empty"
+                android:drawablePadding="14dp"
+                android:text="@string/search_prompt"
+                android:textColor="@color/text_secondary"
+                android:textSize="17sp" />
+        </FrameLayout>
+    </LinearLayout>
+</FrameLayout>
