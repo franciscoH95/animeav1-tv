@@ -1,19 +1,26 @@
 package com.animeav1.data
 
 import android.content.Context
+import android.os.SystemClock
 import android.util.LruCache
 import com.animeav1.data.model.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.Cache
 import okhttp3.ConnectionPool
+import okhttp3.Dns
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.io.File
 import java.io.InterruptedIOException
+import java.net.InetAddress
 import java.net.URI
 import java.net.URLEncoder
+import java.util.concurrent.Callable
+import java.util.concurrent.ExecutionException
+import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.TimeoutException
 
 object AnimeRepository {
 
@@ -54,6 +61,9 @@ object AnimeRepository {
     private const val FAILED_SOURCE_BASE_TTL = 10 * 60 * 1000L
     private const val FAILED_SOURCE_MAX_TTL  = 2 * 60 * 60 * 1000L
 
+    /** Tope de una resolución DNS en [streamClient]. Ver [BoundedDns]. */
+    private const val DNS_TIMEOUT_MS = 4_000L
+
     // In-memory caches. LruCache (thread-safe) bounds memory by entry count; TTL is still
     // checked on read so stale entries are never served. Caps a never-revisited key from
     // living for the whole process lifetime.
@@ -73,7 +83,43 @@ object AnimeRepository {
      * (Voe) aunque ya no valgan. La reutilización ya la da [streamCache], en memoria. Cada llamada
      * lleva su propio tope ([execute]).
      */
-    private val streamClient: OkHttpClient by lazy { client.newBuilder().cache(null).build() }
+    private val streamClient: OkHttpClient by lazy {
+        client.newBuilder().cache(null).dns(BoundedDns(DNS_TIMEOUT_MS)).build()
+    }
+
+    /**
+     * DNS con tope propio. ⚠️ El `callTimeout` de OkHttp NO corta una resolución DNS: cancela
+     * cerrando sockets, y mientras `getaddrinfo` está bloqueado aún no hay ninguno, así que la
+     * llamada solo falla cuando el DNS por fin contesta (medido: tope de 1 s, fallo a los 4 s con un
+     * DNS de 4 s). En una TV con un DNS que se cuelga, los topes de [execute] se pasaban por los
+     * reintentos del resolver de Android. El hilo bloqueado se abandona; el pool es de hilos daemon.
+     */
+    private class BoundedDns(private val timeoutMs: Long) : Dns {
+        override fun lookup(hostname: String): List<InetAddress> {
+            val task = dnsPool.submit(Callable { Dns.SYSTEM.lookup(hostname) })
+            try {
+                return task.get(timeoutMs, TimeUnit.MILLISECONDS)
+            } catch (e: TimeoutException) {
+                task.cancel(true)
+                throw java.net.UnknownHostException("DNS sin respuesta en $timeoutMs ms: $hostname")
+            } catch (e: ExecutionException) {
+                throw (e.cause as? java.net.UnknownHostException)
+                    ?: java.net.UnknownHostException(hostname).apply { initCause(e.cause) }
+            } catch (e: InterruptedException) {
+                task.cancel(true)
+                throw InterruptedIOException("DNS interrumpido: $hostname")
+            }
+        }
+    }
+
+    private val dnsPool = Executors.newCachedThreadPool { r -> Thread(r, "dns").apply { isDaemon = true } }
+
+    /**
+     * Reloj de los topes y de los plazos de [failedSources]: `elapsedRealtime`, no la hora de
+     * pared. Una TV recién encendida suele corregir la hora por NTP, y con `currentTimeMillis` ese
+     * salto dispararía un "sin tiempo" falso o dejaría viva una marca de fallo.
+     */
+    private fun clock(): Long = SystemClock.elapsedRealtime()
 
     /** Un fallo de un proveedor: cuándo fue y cuántos lleva seguidos. Ver [markSourceFailed]. */
     private data class SourceFailure(val at: Long, val streak: Int) {
@@ -97,10 +143,14 @@ object AnimeRepository {
             .connectionPool(ConnectionPool(8, 5, TimeUnit.MINUTES))
             // Attach User-Agent on all requests
             .addInterceptor { chain ->
+                val req = chain.request()
                 chain.proceed(
-                    chain.request().newBuilder()
+                    req.newBuilder()
                         .header("User-Agent", USER_AGENT)
-                        .header("Accept", "application/json,*/*")
+                        // Solo si la petición no trae el suyo: `header()` REEMPLAZA, así que la
+                        // comprobación de la playlist de Zilla mandaba esto en vez del `*/*` del
+                        // reproductor aunque lo pidiera explícitamente.
+                        .apply { if (req.header("Accept") == null) header("Accept", "application/json,*/*") }
                         .build()
                 )
             }
@@ -306,7 +356,7 @@ object AnimeRepository {
             .header("Sec-Fetch-Mode", "cors")
             .header("Sec-Fetch-Dest", "empty")
             .build()
-        return execute(req, deadlineAt = System.currentTimeMillis() + PLAYLIST_PROBE_TIMEOUT_MS) { res ->
+        return execute(req, deadlineAt = clock() + PLAYLIST_PROBE_TIMEOUT_MS) { res ->
             res.code == 200 && StreamUrlParser.looksLikePlaylist(res.body?.string().orEmpty())
         }
     }
@@ -319,7 +369,7 @@ object AnimeRepository {
      * así que los 10 min de [STREAM_TTL] quedan muy por dentro.
      */
     private fun resolveVoe(embedUrl: String): String? {
-        val deadlineAt = System.currentTimeMillis() + RESOLVE_BUDGET_MS   // para TODOS los saltos
+        val deadlineAt = clock() + RESOLVE_BUDGET_MS   // para TODOS los saltos
         var url = embedUrl
         var referer = BASE_URL
         repeat(VOE_MAX_HOPS) {
@@ -339,7 +389,7 @@ object AnimeRepository {
      */
     private fun scrapeStreamUrl(embedUrl: String): String? =
         StreamUrlParser.streamFromEmbedPage(
-            fetchHtml(embedUrl, BASE_URL, System.currentTimeMillis() + RESOLVE_BUDGET_MS)
+            fetchHtml(embedUrl, BASE_URL, clock() + RESOLVE_BUDGET_MS)
         )
 
     private fun fetchHtml(url: String, referer: String, deadlineAt: Long): String {
@@ -351,12 +401,12 @@ object AnimeRepository {
     }
 
     /**
-     * Ejecuta [req] en [streamClient] con un tope TOTAL que acaba en [deadlineAt]. Es el
-     * `callTimeout` de OkHttp, que sí corta una llamada bloqueada (un `withTimeout` de corrutinas
-     * no: el hilo de IO seguiría esperando al socket).
+     * Ejecuta [req] en [streamClient] con un tope TOTAL que acaba en [deadlineAt] (en [clock]). Es
+     * el `callTimeout` de OkHttp, que sí corta una llamada bloqueada (un `withTimeout` de
+     * corrutinas no: el hilo de IO seguiría esperando al socket). El DNS lo acota [BoundedDns].
      */
     private fun <T> execute(req: Request, deadlineAt: Long, read: (okhttp3.Response) -> T): T {
-        val left = deadlineAt - System.currentTimeMillis()
+        val left = deadlineAt - clock()
         if (left <= 0) throw InterruptedIOException("sin tiempo para ${req.url.host}")
         val call = streamClient.newCall(req)
         call.timeout().timeout(left, TimeUnit.MILLISECONDS)
@@ -381,14 +431,16 @@ object AnimeRepository {
      * volvía a esperar 8 s a un Zilla muerto. Un plazo fijo largo sería peor en el otro sentido: un
      * corte de red de un momento dejaría a Voe al final de la cola durante horas.
      *
-     * Además olvida la URL ya resuelta de ESE embed: si no, [streamCache] la seguiría entregando
-     * 10 min más (sin volver a comprobar la playlist de Zilla, o con la URL de Voe atada a una IP que
-     * ya no es la nuestra) y "Reintentar" no podría salir de ahí.
+     * Además olvida las URLs ya resueltas de TODOS los embeds de ese host, no solo del que falló:
+     * si no, [streamCache] las seguiría entregando 10 min más (sin volver a comprobar la playlist de
+     * Zilla, o con la URL de Voe atada a una IP que ya no es la nuestra) y "Reintentar" o elegir
+     * "HLS (Doblado)" tras caerse "HLS (Subtitulado)" costaban otros 25 s de watchdog.
      */
     fun markSourceFailed(embedUrl: String) {
-        streamCache.remove(embedUrl)
-        val host = hostOf(embedUrl) ?: return
-        val now = System.currentTimeMillis()
+        val host = hostOf(embedUrl)
+        if (host == null) { streamCache.remove(embedUrl); return }
+        streamCache.snapshot().keys.filter { hostOf(it) == host }.forEach { streamCache.remove(it) }
+        val now = clock()
         synchronized(failedSources) {
             failedSources[host] = SourceFailure(now, (failedSources[host]?.streak ?: 0) + 1)
         }
@@ -404,10 +456,16 @@ object AnimeRepository {
      * Si el proveedor de [embedUrl] ha fallado dentro de su plazo. Al caducar NO se borra la
      * entrada: la racha tiene que sobrevivir para que el siguiente fallo pese el doble.
      */
-    fun recentlyFailed(embedUrl: String): Boolean {
-        val host = hostOf(embedUrl) ?: return false
-        val f = synchronized(failedSources) { failedSources[host] } ?: return false
-        return System.currentTimeMillis() - f.at < f.ttl
+    /**
+     * Cuánto le queda a la marca de fallo del proveedor de [embedUrl] (0 = no ha fallado hace
+     * poco). Sirve para ORDENAR las que han fallado entre sí: cuando fallan todas —un corte de red
+     * las marca a la vez—, la que lleva más tiempo muerta (Zilla, con su racha) va la última, en vez
+     * de volver al orden del sitio, que la pone primera.
+     */
+    fun failurePenalty(embedUrl: String): Long {
+        val host = hostOf(embedUrl) ?: return 0
+        val f = synchronized(failedSources) { failedSources[host] } ?: return 0
+        return (f.at + f.ttl - clock()).coerceAtLeast(0)
     }
 
     private fun hostOf(url: String): String? =

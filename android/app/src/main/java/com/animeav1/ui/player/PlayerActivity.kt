@@ -137,6 +137,15 @@ class PlayerActivity : FragmentActivity() {
      * ([forgetStream]).
      */
     private var currentStreamEmbed: EmbedServer? = null
+
+    /**
+     * El stream de [currentStreamUrl] es la elección del usuario en el panel y aún no se ha
+     * guardado: se guarda en su primer READY. Va CON el stream y no en un hueco suelto, porque la
+     * elección y el READY no llegan en orden: el player viejo sigue vivo mientras la nueva resuelve
+     * (rebuffers, seeks), y el usuario puede elegir otra encima antes de que la primera arranque.
+     * Con un hueco suelto, que la segunda fallara borraba la primera —que sí sonó— y no se guardaba.
+     */
+    private var currentStreamPicked = false
     private var currentReferer: String = AnimeRepository.BASE_URL
     private var resumePositionMs: Long = 0L
     private var resumePlayWhenReady: Boolean = true
@@ -168,6 +177,15 @@ class PlayerActivity : FragmentActivity() {
     /** Preferencia guardada de esta serie (pista + fuente). Se lee una vez al abrir el episodio. */
     private var savedPrefs: com.animeav1.data.local.SeriesPrefs? = null
 
+    /**
+     * Si ahora puede existir un player: entre onStart y onStop (API > 23) o entre onResume y onPause
+     * (API ≤ 23), justo los tramos en que el ciclo de vida lo crea y lo libera. ⚠️ No basta mirar el
+     * estado del Lifecycle: en API ≤ 23 tras onPause sigue en STARTED, así que una URL que llegaba
+     * con la Activity pausada (tras un overlay translúcido, o entre onPause y onStop) creaba un
+     * player que onStop no libera en esas versiones — y seguía sonando tras HOME.
+     */
+    private var playbackAllowed = false
+
     /** True cuando el episodio ofrece SUB y DUB: solo entonces se nombra la pista en los avisos. */
     private var hasBothTracks = false
 
@@ -185,10 +203,11 @@ class PlayerActivity : FragmentActivity() {
     private var pendingServerSwitch = false
 
     /**
-     * Fuente elegida en el panel que todavía no ha demostrado reproducir. Se guarda en
-     * `series_prefs` cuando llega a READY ([onSourceWorking]), no al pulsarla: guardarla al pulsar
-     * fijaba para toda la serie un servidor que quizá ni contestaba — un solo toque en HLS con
-     * Zilla caído y cada episodio de esa serie arrancaba esperando a HLS.
+     * Fuente elegida en el panel que todavía está resolviendo. Cuando su URL llega, pasa al stream
+     * ([currentStreamPicked]) y se guarda en `series_prefs` al llegar a READY ([onSourceWorking]),
+     * no al pulsarla: guardarla al pulsar fijaba para toda la serie un servidor que quizá ni
+     * contestaba — un solo toque en HLS con Zilla caído y cada episodio de esa serie arrancaba
+     * esperando a HLS.
      */
     private var pendingPrefEmbed: EmbedServer? = null
 
@@ -313,7 +332,12 @@ class PlayerActivity : FragmentActivity() {
     }
 
     private fun setupServerList() {
-        serverAdapter = ServerAdapter { embed -> onServerSelected(embed, fromUser = true) }
+        // ⚠️ `pendingServerSwitch` también cuenta: durante un fallback automático el player ya se
+        // liberó (player == null) pero hay un cambio en marcha con la posición guardada. Sin eso,
+        // elegir otra fuente justo entonces salía con "¿Continuar viendo?" a mitad de episodio.
+        serverAdapter = ServerAdapter { embed ->
+            onServerSelected(embed, fromUser = true, switchInPlace = player != null || pendingServerSwitch)
+        }
         serverLayout = androidx.recyclerview.widget.LinearLayoutManager(this)
         serverList.layoutManager = serverLayout
         serverList.adapter = serverAdapter
@@ -446,7 +470,14 @@ class PlayerActivity : FragmentActivity() {
                         showLoading(loadingNote ?: "Cargando vídeo desde ${labelOf(state.embed)}…")
                     is StreamState.Ready -> playStream(state.url, state.referer, state.embed)
                     is StreamState.Failed -> {
-                        noteSourceFailed(state.embed)
+                        if (player != null && state.embed == playingEmbed) {
+                            // Volver a pedir la fuente que ESTÁ sonando y que falle (un corte de un
+                            // momento) no demuestra que esté caída: el stream que suena dice lo
+                            // contrario. No se marca ni deja de ser a la que volver.
+                            if (pendingPrefEmbed == state.embed) pendingPrefEmbed = null
+                        } else {
+                            noteSourceFailed(state.embed)
+                        }
                         if (player != null) {
                             // Mid-playback switch failed: the old server keeps playing — don't
                             // cover it with the fullscreen error, just restore the selection.
@@ -511,10 +542,16 @@ class PlayerActivity : FragmentActivity() {
         val track = preferredAudio?.takeIf { a -> embeds.any { it.audio == a } } ?: embeds.first().audio
         // Dentro de la pista, lo que ha fallado hace poco va al final (ver
         // AnimeRepository.markSourceFailed): con un proveedor caído, cada episodio empezaba
-        // esperando a que volviera a fallar. Solo reordena: si fallaron todas, se usa igual una.
-        val failed = embeds.filter { AnimeRepository.recentlyFailed(it.url) }.toSet()
-        val inTrack = embeds.filter { it.audio == track }.sortedBy { it in failed }   // estable
-        return inTrack.firstOrNull { byName(it) && it !in failed } ?: inTrack.first()
+        // esperando a que volviera a fallar. Solo reordena, y entre las que fallaron va última la
+        // que lleva más tiempo muerta.
+        val penalty = embeds.associateWith { AnimeRepository.failurePenalty(it.url) }
+        val inTrack = embeds.filter { it.audio == track }.sortedBy { penalty.getValue(it) }  // estable
+        return inTrack.firstOrNull { byName(it) && penalty.getValue(it) == 0L }
+            ?: inTrack.firstOrNull { penalty.getValue(it) == 0L }
+            // Si han fallado TODAS (un corte de red las marca a la vez), la guardada sigue siendo
+            // la mejor apuesta; en el orden del sitio iría primero el Zilla que lleva días caído.
+            ?: inTrack.firstOrNull { byName(it) }
+            ?: inTrack.first()
     }
 
     /** "HLS", o "HLS (Doblado)" cuando el episodio ofrece las dos pistas y hay que distinguir. */
@@ -566,17 +603,11 @@ class PlayerActivity : FragmentActivity() {
         val embed = playingEmbed ?: return
         lastWorkingEmbed = embed
         AnimeRepository.markSourceWorking(embed.url)
-        val picked = pendingPrefEmbed ?: return
-        if (picked != embed) {
-            // ⚠️ Este READY puede ser del stream VIEJO mientras la elección todavía resuelve: sale
-            // de un rebuffer, o el usuario ha hecho seek (media3 pasa READY→BUFFERING→READY). Eso no
-            // dice nada de la elección, así que se conserva mientras siga siendo `selectedEmbed`.
-            // Si ya no lo es, la sustituyó el fallback: no es una preferencia del usuario. (Si
-            // falló, ya la limpió `noteSourceFailed`.)
-            if (selectedEmbed != picked) pendingPrefEmbed = null
-            return
-        }
-        pendingPrefEmbed = null
+        // Solo si ESTE stream es una elección del panel. Un READY del stream viejo mientras la
+        // elección resuelve (rebuffer, seek) no la toca, y lo que trajo el fallback no es una
+        // preferencia del usuario.
+        if (!currentStreamPicked) return
+        currentStreamPicked = false
         // Fire-and-forget en appScope: debe sobrevivir a que el usuario salga del reproductor
         // justo después.
         val s = slug
@@ -618,6 +649,10 @@ class PlayerActivity : FragmentActivity() {
         releasePlayer()                 // saves progress and sets resumePositionMs = last position
         currentStreamUrl = url
         currentStreamEmbed = embed
+        // Una URL solo llega para la última fuente pedida (cada petición cancela la anterior), así
+        // que si coincide con la elección pendiente, ESTE stream es la elección.
+        currentStreamPicked = embed == pendingPrefEmbed
+        if (currentStreamPicked) pendingPrefEmbed = null
         currentReferer = referer
         resumePlayWhenReady = true
 
@@ -660,7 +695,8 @@ class PlayerActivity : FragmentActivity() {
         if (player != null) return
         if (awaitingResumeChoice) return
         // Stream resolution can finish with the Activity stopped (HOME mid-load): don't create
-        // a player that would play audio in background — onStart() re-calls initPlayer().
+        // a player that would play audio in background — onStart()/onResume() re-call initPlayer().
+        if (!playbackAllowed) return
         if (!lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) return
 
         val httpFactory = DefaultHttpDataSource.Factory()
@@ -752,6 +788,7 @@ class PlayerActivity : FragmentActivity() {
     private fun forgetStream() {
         currentStreamUrl = null
         currentStreamEmbed = null
+        currentStreamPicked = false
     }
 
     private fun releasePlayer() {
@@ -837,7 +874,7 @@ class PlayerActivity : FragmentActivity() {
         lastWorkingEmbed?.takeIf { it != failed && it.audio == failed.audio }?.let { return it }
         return embedList
             .filter { it.audio == failed.audio && it !in triedEmbeds }
-            .sortedBy { AnimeRepository.recentlyFailed(it.url) }   // estable: si no, orden del sitio
+            .sortedBy { AnimeRepository.failurePenalty(it.url) }   // estable: si no, orden del sitio
             .firstOrNull()
     }
 
@@ -1356,22 +1393,22 @@ class PlayerActivity : FragmentActivity() {
 
     override fun onStart() {
         super.onStart()
-        if (Build.VERSION.SDK_INT > 23) initPlayer()
+        if (Build.VERSION.SDK_INT > 23) { playbackAllowed = true; initPlayer() }
     }
 
     override fun onResume() {
         super.onResume()
-        if (Build.VERSION.SDK_INT <= 23) initPlayer()
+        if (Build.VERSION.SDK_INT <= 23) { playbackAllowed = true; initPlayer() }
     }
 
     override fun onPause() {
         super.onPause()
-        if (Build.VERSION.SDK_INT <= 23) releasePlayer()
+        if (Build.VERSION.SDK_INT <= 23) { playbackAllowed = false; releasePlayer() }
     }
 
     override fun onStop() {
         super.onStop()
-        if (Build.VERSION.SDK_INT > 23) releasePlayer()
+        if (Build.VERSION.SDK_INT > 23) { playbackAllowed = false; releasePlayer() }
     }
 
     // ── D-pad / remote: drive everything ourselves ─────────────────────────────

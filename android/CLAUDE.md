@@ -176,8 +176,9 @@ reproducible por ExoPlayer:
   sirven segmentos viejos que Cloudflare tenía en caché, y sin playlist no sirven de nada. El sitio
   sigue poniendo HLS el primero de cada pista. Si vuelve, funciona sin tocar nada.
   ⚠️ **Por eso `resolveZilla` comprueba la playlist antes de darla por buena** (`playlistAnswers`: GET
-  con las cabeceras del reproductor —`Accept: */*`, no el `application/json` del interceptor global—,
-  tope TOTAL de 8 s y exige 200 + `#EXTM3U`, `StreamUrlParser.looksLikePlaylist`). El tope es más
+  con las cabeceras del reproductor —`Accept: */*`; ⚠️ el interceptor global del cliente solo pone su
+  `application/json,*/*` si la petición no trae `Accept`: antes lo REEMPLAZABA (`header()` pisa) y la
+  comprobación nunca mandaba lo que pedía—, tope TOTAL de 8 s y exige 200 + `#EXTM3U`, `StreamUrlParser.looksLikePlaylist`). El tope es más
   estricto que media3 (8 s de conexión + 8 de lectura por intento, con reintentos) a propósito: un
   Zilla vivo pero lentísimo se daría por caído, y lo único que cuesta es el orden. Antes la "resolución" era un cambio de texto que no fallaba
   NUNCA: con Zilla caído media3 cortaba cada intento a los 8 s (timeout de lectura por defecto, sin
@@ -246,6 +247,11 @@ reproducible por ExoPlayer:
   comparten el tope). Sin él, un nodo que acepta la conexión y no contesta costaba 15-20 s por salto
   —y OkHttp reintenta con la otra IP— con "Probando Voe…" en pantalla y sin watchdog, que solo
   arranca con el player.
+  ⚠️ **El `callTimeout` NO acota el DNS**: cancela cerrando sockets, y mientras `getaddrinfo` está
+  bloqueado aún no hay ninguno (medido: tope de 1 s, fallo a los 4 s con un DNS de 4 s). Por eso
+  `streamClient` lleva `BoundedDns` (4 s, en un pool de hilos daemon; el hilo colgado se abandona).
+  Los topes y los plazos de fallo van con `SystemClock.elapsedRealtime()`, no con la hora de pared:
+  una TV recién encendida corrige la hora por NTP y el salto dispararía topes falsos.
 - El `Referer` para ExoPlayer se deriva del **host del embed** (`StreamUrlParser.refererOf`, que usan
   `PlayerViewModel` y la comprobación de la playlist de Zilla), no de animeav1.
 
@@ -313,11 +319,14 @@ lleva el `EmbedServer` entero. Si añades comparaciones por nombre, vuelves a me
   (`pendingPrefEmbed` → `onSourceWorking`), y solo si lo que reproduce es lo que se eligió. Guardándola
   al pulsar, un solo toque en HLS con Zilla caído dejaba la serie fijada a un servidor muerto: el
   fallback nunca escribe preferencias, así que no se autorreparaba y cada episodio arrancaba esperándolo.
-  ⚠️ Un READY del stream **VIEJO** no consume la elección pendiente: mientras la nueva resuelve, el
-  player anterior sigue vivo y puede salir de un rebuffer o recibir un seek (media3 pasa
-  READY→BUFFERING→READY), y eso no dice nada de la elección. Solo se descarta si ya no es
-  `selectedEmbed` (la sustituyó el fallback) o si falló (`noteSourceFailed`). Consumiéndola en el
-  primer READY que llegara, justo el caso típico —cambiar porque el stream va a tirones— no se guardaba.
+  ⚠️ **"Esto lo eligió el usuario" va CON el stream** (`currentStreamPicked`), no en un hueco suelto:
+  `pendingPrefEmbed` solo vive mientras la elección resuelve, y al llegar su URL (`playStream`) pasa
+  al stream y se guarda en SU primer READY. La elección y los READY no llegan en orden: el player viejo
+  sigue vivo mientras la nueva resuelve y puede salir de un rebuffer o recibir un seek (media3 pasa
+  READY→BUFFERING→READY), y el usuario puede elegir otra encima antes de que la primera arranque. Con
+  un hueco suelto se perdían las dos cosas: un READY del viejo descartaba la elección —justo el caso
+  típico, cambiar porque el stream va a tirones—, y que fallara la segunda borraba la primera, que sí
+  sonó.
   ⚠️ `playingEmbed` sale del embed de la URL (`currentStreamEmbed`, que va y se olvida SIEMPRE con
   `currentStreamUrl`, vía `forgetStream`), no de `selectedEmbed`: en API 21-23 el player se recrea en
   `onResume`, y con un cambio del panel aún resolviendo el stream viejo heredaba el nombre del nuevo.
@@ -346,9 +355,12 @@ lleva el `EmbedServer` entero. Si añades comparaciones por nombre, vuelves a me
   funcionaba hacía un momento. Y deja de serlo en cuanto ELLA falla (`noteSourceFailed`): si no, tras
   caerse a mitad de episodio la cadena volvía a ella —25 s más de watchdog— antes de probar las que
   quedaban sin probar.
-  ⚠️ **Lo que ha fallado hace poco va al final** (`AnimeRepository.markSourceFailed/recentlyFailed`,
+  ⚠️ **Lo que ha fallado hace poco va al final** (`AnimeRepository.markSourceFailed/failurePenalty`,
   por HOST): el pick por defecto y `nextUntriedSource` lo dejan para el final, así que con un
-  proveedor caído el episodio siguiente ya no empieza esperándolo. Solo ORDENA —no esconde nada del
+  proveedor caído el episodio siguiente ya no empieza esperándolo. Se ordena por lo que le QUEDA a la
+  marca, no por sí/no: cuando fallan todas a la vez (un corte de red), la guardada sigue siendo la
+  primera opción y la que lleva más tiempo muerta (Zilla, con su racha) la última — por sí/no, el
+  orden volvía a ser el del sitio, que pone primero a Zilla. Solo ORDENA —no esconde nada del
   panel ni toca `series_prefs`— y llegar a READY lo borra (`markSourceWorking`). Va por host porque
   cuando Zilla se cae, se caen todos sus episodios y las dos pistas a la vez.
   - ⚠️ **El plazo crece con cada fallo seguido**: 10 min, 20, 40… hasta 2 h, y READY lo pone a cero.
@@ -362,9 +374,15 @@ lleva el `EmbedServer` entero. Si añades comparaciones por nombre, vuelves a me
     normal al abrir desde la ficha o Inicio) y con los hosts de SUB marcados, el primer "vivo" podía
     ser de DOBLADO: pasa en episodios cuyo DUB tiene un host que su SUB no tiene (se encontró uno en
     319: FMA Brotherhood ep. 50, con YourUpload solo en DUB).
-  - Marcar un fallo también **olvida la URL ya resuelta de ese embed** (`streamCache`): si no, durante
-    10 min "Reintentar" o volver a elegirlo entregaba la misma URL muerta, sin volver a comprobar la
-    playlist de Zilla.
+  - Marcar un fallo también **olvida las URLs ya resueltas de ese HOST** (`streamCache`, todos sus
+    embeds, no solo el que falló): si no, durante 10 min "Reintentar", volver a elegirlo o elegir
+    "HLS (Doblado)" tras caerse "HLS (Subtitulado)" entregaba una URL muerta sin volver a comprobar
+    la playlist de Zilla — 25 s de watchdog en vez de 8.
+  - Si lo que falla es volver a pedir la fuente que **está sonando** (el panel abre con el foco en
+    ella y un CENTRO reflejo la vuelve a pedir), no se marca: el stream que suena demuestra que va.
+  - Elegir en el panel **durante un fallback automático** conserva la posición: el player ya se
+    liberó, pero `pendingServerSwitch` dice que hay un cambio en marcha. Sin eso salía "¿Continuar
+    viendo?" a mitad de episodio.
 - **La pantalla de error es un modal y el D-pad tiene que llegar a sus botones.** `dispatchKeyEvent`
   la trata como tal (rama propia antes de la de "controles ocultos"). ⚠️ Sin esa rama, la de controles
   ocultos consumía TODAS las teclas devolviendo `true` y sus dos acciones (`showControls`/`scrub`)
@@ -402,8 +420,12 @@ lleva el `EmbedServer` entero. Si añades comparaciones por nombre, vuelves a me
   Toast y se reabre el panel. BACK desde el panel con player activo también hace `hideLoading()` (nunca
   dejar el overlay pegado sobre vídeo en reproducción).
 - **No crear el player en background:** los collectors de stream no son lifecycle-aware a propósito, pero
-  `initPlayer()` tiene guard `lifecycle.currentState.isAtLeast(STARTED)` — si la resolución termina con la
-  Activity parada (HOME a mitad de carga), no suena audio sobre el launcher; `onStart` lo crea al volver.
+  `initPlayer()` solo crea el player con `playbackAllowed` —true entre onStart y onStop (API > 23) o
+  entre onResume y onPause (≤ 23), los mismos tramos en que se crea y se libera— además del guard
+  `isAtLeast(STARTED)`. Si la resolución termina con la Activity parada (HOME a mitad de carga), no
+  suena audio sobre el launcher; `onStart`/`onResume` lo crea al volver. ⚠️ El guard del Lifecycle
+  solo no bastaba: en API ≤ 23 tras onPause el estado sigue en STARTED, y una URL que llegaba con la
+  Activity pausada creaba un player que onStop no libera en esas versiones.
 - **STATE_ENDED:** `togglePlay` hace `seekTo(0)+play` si el estado es ENDED, y el icono play/pausa
   considera ENDED como "no reproduciendo" (antes quedaba un callejón sin salida al acabar el contenido).
 - **Un solo loader:** `show_buffering="never"` (el spinner de media3 traspasaba el scrim y se veían dos);
