@@ -93,6 +93,7 @@ class PlayerActivity : FragmentActivity() {
     private lateinit var nextEpThumb: ImageView
     private lateinit var nextEpTitle: TextView
     private lateinit var nextEpCountdown: TextView
+    private lateinit var nextEpProgress: ProgressBar
     private lateinit var btnPlayNext: Button
     private lateinit var btnCancelNext: Button
 
@@ -318,6 +319,7 @@ class PlayerActivity : FragmentActivity() {
         nextEpThumb     = findViewById(R.id.next_ep_thumb)
         nextEpTitle     = findViewById(R.id.next_ep_title)
         nextEpCountdown = findViewById(R.id.next_ep_countdown)
+        nextEpProgress  = findViewById(R.id.next_ep_progress)
         btnPlayNext     = findViewById(R.id.btn_play_next)
         btnCancelNext   = findViewById(R.id.btn_cancel_next)
 
@@ -1229,12 +1231,15 @@ class PlayerActivity : FragmentActivity() {
     private fun setupNextEpisodeCard() {
         btnPlayNext.setOnClickListener { playNextNow() }
         btnCancelNext.setOnClickListener { cancelNextEpisode() }
+        // Las esquinas redondeadas del fondo recortan también la imagen de arriba (el atributo XML
+        // `clipToOutline` es de API 31; el setter, de 21).
+        nextEpisodeCard.clipToOutline = true
     }
 
     private fun showNextEpisodeCard() {
         nextCardHandled = true     // show only once per episode (don't re-trigger after Cancelar)
         hideControls()
-        nextEpTitle.text = "Episodio ${number + 1}"
+        nextEpTitle.text = getString(R.string.episode_n, number + 1)
         // El fotograma del episodio que viene, no la imagen de la serie: la tarjeta enseñaba el
         // mismo backdrop para los 1172 episodios de One Piece. Si el CDN no lo tiene responde 403,
         // y entonces se cae a la imagen de la serie, que es lo que había antes.
@@ -1249,23 +1254,41 @@ class PlayerActivity : FragmentActivity() {
             }
             fallback.isNotBlank() -> nextEpThumb.load(fallback) { crossfade(true) }
         }
+        nextEpProgress.progress = 0
+        nextEpCountdown.text = getString(R.string.next_in, NEXT_COUNTDOWN_SECS)
+        // Entra con un fundido y subiendo un poco, en vez de aparecer de golpe sobre el vídeo.
+        nextEpisodeCard.alpha = 0f
+        nextEpisodeCard.translationY = NEXT_CARD_RISE_DP * resources.displayMetrics.density
         nextEpisodeCard.visibility = View.VISIBLE
+        nextEpisodeCard.animate().alpha(1f).translationY(0f)
+            .setDuration(NEXT_CARD_ENTER_MS).withLayer().start()
         btnPlayNext.post { btnPlayNext.requestFocus() }
         startNextCountdown()
     }
 
+    /**
+     * La cuenta atrás cuenta TIEMPO REPRODUCIENDO, no tiempo de reloj: con el vídeo en pausa se para
+     * (las teclas multimedia siguen vivas con la tarjeta puesta, y saltar de episodio sobre un vídeo
+     * pausado a propósito es lo contrario de lo que se pidió). Avanza a pasos cortos para que la
+     * barra se llene suave; el texto solo se reescribe cuando cambia el segundo.
+     */
     private fun startNextCountdown() {
         nextCountdownJob?.cancel()
         nextCountdownJob = lifecycleScope.launch {
-            var remaining = NEXT_COUNTDOWN_SECS
-            while (remaining > 0) {
-                nextEpCountdown.text = getString(R.string.next_in, remaining)
-                delay(1_000)
-                // Pausing pauses the auto-advance: the media keys stay live while this card is
-                // up, and jumping to the next episode on a deliberately paused video is the
-                // opposite of what the user asked for.
-                if (player?.playWhenReady == true) remaining--
+            val totalMs = NEXT_COUNTDOWN_SECS * 1000L
+            var elapsedMs = 0L
+            var shownSecs = -1
+            while (elapsedMs < totalMs) {
+                val secs = ((totalMs - elapsedMs + 999) / 1000).toInt()
+                if (secs != shownSecs) {
+                    nextEpCountdown.text = getString(R.string.next_in, secs)
+                    shownSecs = secs
+                }
+                nextEpProgress.progress = (elapsedMs * nextEpProgress.max / totalMs).toInt()
+                delay(NEXT_TICK_MS)
+                if (player?.playWhenReady == true) elapsedMs += NEXT_TICK_MS
             }
+            nextEpProgress.progress = nextEpProgress.max
             goToNextEpisode()
         }
     }
@@ -1274,6 +1297,9 @@ class PlayerActivity : FragmentActivity() {
     private fun cancelNextEpisode() {
         nextCountdownJob?.cancel()
         nextCountdownJob = null
+        nextEpisodeCard.animate().cancel()
+        nextEpisodeCard.alpha = 1f
+        nextEpisodeCard.translationY = 0f
         nextEpisodeCard.visibility = View.GONE
     }
 
@@ -1648,6 +1674,9 @@ class PlayerActivity : FragmentActivity() {
         private const val WATCHED_REMAINING_MS = 2 * 60 * 1000L   // mark watched when ≤ 2 min remain
         private const val NEXT_CARD_REMAINING_MS = 30 * 1000L     // offer next episode when ≤ 30 s remain
         private const val NEXT_COUNTDOWN_SECS = 10                // auto-advance countdown (seconds)
+        private const val NEXT_TICK_MS = 40L                      // paso de la barra (~25 fps)
+        private const val NEXT_CARD_ENTER_MS = 260L
+        private const val NEXT_CARD_RISE_DP = 16f
         private const val STATE_CARRIED_SERVER = "carriedServer"
         private const val STATE_CARRIED_AUDIO  = "carriedAudio"
     }

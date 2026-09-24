@@ -9,6 +9,14 @@
     <!-- TV overscan-safe margins (~5% / ~3%). Content (grids + headers) keeps these from the edges. -->
     <dimen name="tv_safe_h">48dp</dimen>
     <dimen name="tv_safe_v">24dp</dimen>
+    <!-- Tarjeta de siguiente episodio: ANCHO FIJO. Con wrap_content medía lo que el texto de la cuenta
+         atrás, y "…en 10s" es más ancho que "…en 9s": la tarjeta cambiaba de tamaño cada segundo. -->
+    <dimen name="next_card_width">280dp</dimen>
+    <!-- = next_card_width × 9/16 (las miniaturas del CDN son 16:9): VAN JUNTAS. Es una altura fija y no
+         un RatioImageView con wrap_content porque encima de la imagen va un degradado match_parent, y
+         dentro de un FrameLayout wrap_content un match_parent se mide contra TODO el alto disponible:
+         la tarjeta crecía hasta ocupar la pantalla y los botones se salían por abajo. -->
+    <dimen name="next_card_image_height">158dp</dimen>
 
     <!-- Series detail: left info panel + its anchoring gradient -->
     <dimen name="series_panel_width">380dp</dimen>

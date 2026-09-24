@@ -29,7 +29,7 @@
     <string name="next_up">A continuación</string>
     <string name="play_now">Ver ahora</string>
     <string name="cancel">Cancelar</string>
-    <string name="next_in">Reproduciendo en %1$ds</string>
+    <string name="next_in">Empieza en %1$d s</string>
 
     <!-- Mi Lista: airing series with unwatched new episodes -->
     <string name="new_badge">NUEVO</string>

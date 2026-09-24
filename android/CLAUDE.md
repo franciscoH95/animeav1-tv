@@ -512,6 +512,24 @@ lleva el `EmbedServer` entero. Si añades comparaciones por nombre, vuelves a me
   no el id de la serie). Antes ponía el backdrop de la serie, o sea la misma imagen para los 1172
   episodios de One Piece. Si el CDN no lo tiene (403) se cae a la imagen de la serie, que es lo que
   había antes.
+  **Cómo es:** ancho fijo (`next_card_width`, 280 dp), el fotograma a todo el ancho en 16:9 con las
+  esquinas recortadas por el fondo (`clipToOutline` en código: el atributo XML es de API 31), la
+  píldora "A CONTINUACIÓN", "Episodio N" y "Empieza en X s" sobre un degradado, una barra fina en el
+  borde inferior de la imagen que se llena en los 10 s, y los botones debajo. Entra con un fundido
+  y subiendo 16 dp.
+  ⚠️ **Ancho FIJO a propósito:** con `wrap_content` medía lo que el texto de la cuenta atrás, que
+  cambia de ancho cada segundo ("…en 10 s" / "…en 9 s"), y como va anclada a la derecha el borde
+  izquierdo daba saltos. Dentro todo es `match_parent` o fijo, y la cifra lleva números tabulares
+  (`fontFeatureSettings="tnum"`). Medido en el emulador con `dumpsys activity top`: la tarjeta,
+  el texto y la barra conservan exactamente los mismos límites en todos los ticks.
+  ⚠️ **El bloque de la imagen tiene ALTURA FIJA** (`next_card_image_height` = ancho × 9/16, van
+  juntas), no un `RatioImageView` con `wrap_content`: encima va un degradado `match_parent`, y
+  dentro de un `FrameLayout` `wrap_content` un `match_parent` se mide contra TODO el alto
+  disponible (`View.getDefaultSize` con AT_MOST). La primera versión creció hasta ocupar la
+  pantalla, con un bloque negro en medio y los botones fuera.
+  La cuenta atrás (`startNextCountdown`) suma **tiempo reproduciendo** a pasos de 40 ms: la barra
+  avanza suave, el texto solo se reescribe al cambiar el segundo, y con el vídeo en pausa las dos
+  se paran (medido: pausada, dos capturas a 4 s de distancia son idénticas).
 - **Panel de servidores** (DPAD-ARRIBA o botón ☰): lista lateral **agrupada por pista de audio**, con
   cabeceras `SUBTITULADO` / `DOBLADO` (`item_server_header.xml`); al elegir, re-resuelve y reproduce desde
   la misma posición. `ServerAdapter` tiene por eso **dos view types**: las cabeceras son

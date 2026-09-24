@@ -463,84 +463,129 @@
         </LinearLayout>
     </LinearLayout>
 
-    <!-- Next-episode auto-play card (Netflix/Crunchyroll style) -->
+    <!-- Tarjeta de siguiente episodio (auto-play al estilo Netflix/Crunchyroll).
+         ⚠️ ANCHO FIJO (@dimen/next_card_width): con wrap_content medía lo que el texto de la cuenta
+         atrás, que cambia de ancho cada segundo ("…en 10 s" / "…en 9 s"), y como va anclada a la
+         derecha el borde izquierdo daba saltos. Dentro, todo es match_parent o de tamaño fijo, y la
+         cifra va con números tabulares (tnum): ningún tick puede redimensionar nada.
+         Los ids son los que usan PlayerActivity y la rama modal de dispatchKeyEvent. -->
     <LinearLayout
         android:id="@+id/next_episode_card"
-        android:layout_width="wrap_content"
+        android:layout_width="@dimen/next_card_width"
         android:layout_height="wrap_content"
         android:layout_gravity="bottom|end"
-        android:layout_marginEnd="44dp"
-        android:layout_marginBottom="44dp"
+        android:layout_marginEnd="@dimen/tv_safe_h"
+        android:layout_marginBottom="40dp"
         android:orientation="vertical"
         android:background="@drawable/next_card_bg"
-        android:padding="16dp"
+        android:elevation="12dp"
         android:visibility="gone">
 
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="@string/next_up"
-            android:textColor="@color/text_secondary"
-            android:textSize="11sp"
-            android:letterSpacing="0.1"
-            android:layout_marginBottom="10dp" />
-
-        <LinearLayout
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:orientation="horizontal"
-            android:gravity="center_vertical">
+        <!-- El fotograma del episodio que viene, a todo el ancho y en 16:9 (la proporción de las
+             miniaturas del CDN, así que no se recorta nada). Altura FIJA: ver next_card_image_height. -->
+        <FrameLayout
+            android:layout_width="match_parent"
+            android:layout_height="@dimen/next_card_image_height">
 
             <ImageView
                 android:id="@+id/next_ep_thumb"
-                android:layout_width="104dp"
-                android:layout_height="58dp"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
                 android:scaleType="centerCrop"
                 android:background="@color/placeholder_color"
                 android:contentDescription="@null" />
 
-            <LinearLayout
+            <View
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:background="@drawable/next_card_scrim" />
+
+            <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
+                android:layout_gravity="top|start"
+                android:layout_margin="10dp"
+                android:background="@drawable/next_card_label_bg"
+                android:paddingStart="7dp"
+                android:paddingEnd="7dp"
+                android:paddingTop="2dp"
+                android:paddingBottom="2dp"
+                android:text="@string/next_up"
+                android:textAllCaps="true"
+                android:textColor="@color/text_primary"
+                android:textSize="10sp"
+                android:textStyle="bold"
+                android:letterSpacing="0.1" />
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_gravity="bottom"
                 android:orientation="vertical"
-                android:layout_marginStart="12dp">
+                android:paddingStart="12dp"
+                android:paddingEnd="12dp"
+                android:paddingBottom="12dp">
 
                 <TextView
                     android:id="@+id/next_ep_title"
-                    android:layout_width="wrap_content"
+                    android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:textColor="#FFFFFF"
-                    android:textSize="16sp"
-                    android:textStyle="bold" />
+                    android:maxLines="1"
+                    android:ellipsize="end"
+                    android:textColor="@color/text_primary"
+                    android:textSize="18sp"
+                    android:textStyle="bold"
+                    android:shadowColor="#CC000000"
+                    android:shadowRadius="6"
+                    android:shadowDy="1" />
 
                 <TextView
                     android:id="@+id/next_ep_countdown"
-                    android:layout_width="wrap_content"
+                    android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_marginTop="2dp"
+                    android:layout_marginTop="1dp"
+                    android:maxLines="1"
                     android:textColor="@color/accent_light"
-                    android:textSize="12sp" />
+                    android:textSize="12sp"
+                    android:fontFeatureSettings="tnum"
+                    android:shadowColor="#CC000000"
+                    android:shadowRadius="6"
+                    android:shadowDy="1" />
             </LinearLayout>
-        </LinearLayout>
+
+            <!-- La cuenta atrás en barra: se llena en los 10 s y se para si se pausa el vídeo. -->
+            <ProgressBar
+                android:id="@+id/next_ep_progress"
+                style="?android:attr/progressBarStyleHorizontal"
+                android:layout_width="match_parent"
+                android:layout_height="3dp"
+                android:layout_gravity="bottom"
+                android:max="1000"
+                android:progress="0"
+                android:progressDrawable="@drawable/next_card_progress" />
+        </FrameLayout>
 
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="horizontal"
-            android:layout_marginTop="14dp">
+            android:padding="12dp">
 
             <Button
                 android:id="@+id/btn_play_next"
                 android:layout_width="0dp"
-                android:layout_height="46dp"
+                android:layout_height="42dp"
                 android:layout_weight="1"
                 android:layout_marginEnd="8dp"
                 android:text="@string/play_now"
                 android:textAllCaps="false"
                 android:textColor="@color/text_primary"
                 android:textSize="13sp"
+                android:textStyle="bold"
                 android:drawableStart="@drawable/ic_play_arrow"
-                android:drawablePadding="4dp"
+                android:drawablePadding="2dp"
+                android:paddingStart="10dp"
+                android:paddingEnd="12dp"
                 android:background="@drawable/btn_series_bg"
                 android:focusable="true"
                 android:focusableInTouchMode="true"
@@ -551,7 +596,7 @@
             <Button
                 android:id="@+id/btn_cancel_next"
                 android:layout_width="0dp"
-                android:layout_height="46dp"
+                android:layout_height="42dp"
                 android:layout_weight="1"
                 android:text="@string/cancel"
                 android:textAllCaps="false"
