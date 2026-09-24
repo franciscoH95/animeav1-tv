@@ -309,6 +309,41 @@ lleva el `EmbedServer` entero. Si añades comparaciones por nombre, vuelves a me
   `goToEpisode` arrastra `selectedEmbed`, que tras un fallback NO es lo que el usuario eligió, así que
   un stall de 25 s en YourUpload dejaba el resto del maratón en HLS (AV1) aunque la tabla dijera otra
   cosa.
+  ⚠️ **Con UNA excepción: la elección del usuario que la tabla aún no tiene.** Como se guarda al
+  llegar a READY, elegir "Voe (Doblado)" y darle a ⏭ mientras cargaba abría el episodio siguiente con
+  la preferencia vieja (subtitulado). Regla: **una elección sin guardar vale exactamente como una
+  guardada**.
+  - Qué viaja se decide AL CAMBIAR de episodio (`unsavedUserChoice`), no apuntando "la última
+    elección" al elegir: la que está resolviendo (`pendingPrefEmbed`), la que suena sin haberse
+    guardado (`currentStreamPicked`) o la traída de un episodio anterior (`carriedPref`). Así una
+    elección sustituida por otra no viaja, una que falló tampoco (`noteSourceFailed` la quitó), y la
+    que sigue sonando tras fallar la siguiente sí. Va en los extras con `preferredFromUser`.
+  - El episodio que la recibe (`carriedPref`) la usa EN LUGAR de la tabla, y si tiene de verdad ese
+    servidor Y esa pista, ponerla cuenta como elección del usuario (`matchesCarried`, decidido en
+    `onServerSelected`, así que vale igual por el pick por defecto, el fallback o "Reintentar"): se
+    guarda al sonar. Al guardar cualquier elección, `carriedPref` pasa a ser ESA (no se borra): lo
+    que viaja no depende de que la escritura fire-and-forget en Room termine antes de que el
+    episodio siguiente la lea.
+  - ⚠️ **Si se PRUEBA y falla, se queda solo la pista** (`server = null`): el doblaje elegido sigue,
+    y el servidor sale de la tabla si es de esa misma pista (si no, ninguno). Sin eso, un toque en
+    HLS con Zilla caído + ⏭ antes de que fallara lo fijaba para todo el maratón, esperándolo cada vez
+    que caducaba su penalización — justo lo que guardar al sonar existe para evitar.
+    Verificado: HLS (Doblado) + ⏭ → el siguiente lo prueba, falla y sigue en Voe (Doblado); el de
+    después arranca ya en Voe (Doblado), sin esperar a HLS; la tabla no cambia.
+  - ⚠️ **Sigue viajando aunque ese episodio no la pueda poner** —no tiene el servidor, su host acaba
+    de fallar, o falla al probarla—, igual que una preferencia guardada no se borra porque un
+    episodio no la tenga. Con un "vale un episodio" (la primera versión del arreglo), el ep. N+2
+    volvía al subtitulado de la tabla: el mismo bug, un episodio más tarde. Por lo mismo no depende
+    de `selectedEmbed`: ⏭⏭ antes de que el episodio intermedio cargue sus servidores la conserva.
+  - ⚠️ **Sobrevive a la recreación por `onSaveInstanceState`, NO releyendo el intent**: los extras
+    siguen diciendo "elección del usuario" aunque desde entonces se haya guardado otra más nueva, y
+    releerlos la pisaba. Solo se lee del intent con `savedInstanceState == null`.
+  - Lo que trajo un fallback o el pick por defecto no lleva la marca: ahí sigue mandando la tabla.
+  - `goToEpisode` actúa una sola vez (`leavingEpisode`): un ⏭ mantenido lanzaba dos reproductores
+    del mismo episodio, uno encima de otro.
+  Verificado en el emulador: SUB/Voe guardado → elegir Voe (Doblado) + ⏭ → el siguiente abre en
+  Voe (Doblado) y la tabla pasa a DUB/Voe; con ⏭⏭ rápido, el de dos más allá también; y con DUB
+  traído y guardado, elegir SUB, guardarlo y forzar la recreación (`font_scale`) → sigue en SUB.
   ⚠️ **Solo se guarda con `fromUser = true`**, y por ahí pasa únicamente el clic del panel. Por
   `onServerSelected` entran también el pick automático del arranque y el fallback por fallo de CDN:
   persistir esos convertía un accidente en la preferencia permanente de la serie. Un episodio recién
@@ -499,7 +534,8 @@ lleva el `EmbedServer` entero. Si añades comparaciones por nombre, vuelves a me
   va por detrás: cuando coincide con el episodio que se ve, el reproductor lo tomaba por el último
   (ni ofrecía el siguiente, ni dejaba avanzar con ⏭, y al marcar visto lo trataba como fin de serie).
 - Extras del intent que necesita: `slug, number, title, coverUrl, backdropUrl, totalEpisodes, minEpisode,
-  maxEpisode, seriesStatus, startDate, category, preferredServer, preferredAudio, isWatched`.
+  maxEpisode, seriesStatus, startDate, category, preferredServer, preferredAudio, preferredFromUser,
+  isWatched`.
   `preferredAudio` (`"SUB"`/`"DUB"`) se arrastra junto a `preferredServer` al pasar de episodio: si venías
   viendo el doblaje, el siguiente episodio no debe saltar al subtitulado solo porque SUB va primero.
 - Ciclo de vida: crea el player en `onStart` (API>23) / `onResume` (≤23), lo libera en `onStop`/`onPause`,

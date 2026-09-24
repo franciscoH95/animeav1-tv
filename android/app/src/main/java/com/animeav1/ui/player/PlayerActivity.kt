@@ -212,6 +212,31 @@ class PlayerActivity : FragmentActivity() {
     private var pendingPrefEmbed: EmbedServer? = null
 
     /**
+     * Una preferencia del usuario (pista + servidor) que `series_prefs` puede no tener aún.
+     * `server == null`: solo la pista — el servidor elegido falló al probarlo (ver [noteSourceFailed]).
+     */
+    private data class CarriedPref(val server: String?, val audio: AudioTrack)
+
+    /**
+     * La elección del usuario más nueva que conoce este episodio y que `series_prefs` puede no tener
+     * todavía: la del panel de un episodio ANTERIOR (se guarda al sonar, y el usuario le dio a ⏭
+     * antes), o la que se acaba de guardar aquí ([onSourceWorking]; así el episodio siguiente no
+     * depende de que la escritura en Room haya terminado). ⚠️ Vale exactamente como si estuviera
+     * guardada: manda sobre la tabla, y sigue viajando de episodio en episodio aunque aquí no se
+     * pueda poner —este episodio no tiene ese servidor o su host acaba de fallar—, igual que una
+     * preferencia guardada no se borra porque un episodio no la tenga.
+     * ⚠️ Si se PRUEBA y falla, pierde el servidor y se queda en la pista ([noteSourceFailed]): el
+     * doblaje que eligió el usuario sigue, pero un servidor que no ha sonado nunca no se fija para el
+     * resto del maratón (con Zilla caído, un toque en HLS + ⏭ lo dejaba esperándose en cada episodio).
+     * Sobrevive a la recreación de la Activity por `onSaveInstanceState`: releerla del intent
+     * pisaría una elección más nueva guardada desde entonces.
+     */
+    private var carriedPref: CarriedPref? = null
+
+    /** Ya se ha pedido cambiar de episodio: `goToEpisode` no debe lanzar otro. */
+    private var leavingEpisode = false
+
+    /**
      * Última fuente que llegó a READY en este episodio. Si el usuario cambia a otra desde el panel y
      * esa no arranca, el fallback vuelve AQUÍ antes que a una desconocida: está en `triedEmbeds`, así
      * que sin esto la cadena la saltaba y podía acabar en "Ninguna fuente responde" con una fuente
@@ -246,6 +271,13 @@ class PlayerActivity : FragmentActivity() {
         preferredServer = intent.getStringExtra("preferredServer")
         preferredAudio  = intent.getStringExtra("preferredAudio")
             ?.let { name -> AudioTrack.values().firstOrNull { it.name == name } }
+        carriedPref =
+            if (savedInstanceState != null) carriedPrefOf(
+                savedInstanceState.getString(STATE_CARRIED_SERVER), savedInstanceState.getString(STATE_CARRIED_AUDIO)
+            )
+            else if (intent.getBooleanExtra("preferredFromUser", false))
+                carriedPrefOf(preferredServer, preferredAudio?.name)
+            else null
         autoResume      = intent.getBooleanExtra("autoResume", false)
 
         vm = ViewModelProvider(this)[PlayerViewModel::class.java]
@@ -310,7 +342,16 @@ class PlayerActivity : FragmentActivity() {
             // stall de 25 s en YourUpload dejaba el resto del maratón en HLS (AV1), y un episodio
             // publicado solo en SUB dejaba en subtitulado una serie que se veía DOBLADA. Es el mismo
             // daño que evita no persistirlos, pero por la vía de la lectura.
-            savedPrefs?.let { p ->
+            // ⚠️ Salvo que haya una elección del usuario que la tabla aún no tiene (`carriedPref`):
+            // esa es más nueva. Elegir "Voe (Doblado)" y darle a ⏭ mientras cargaba abría el
+            // episodio siguiente en el subtitulado de siempre.
+            val carried = carriedPref
+            if (carried != null) {
+                preferredAudio = carried.audio
+                // Sin servidor (el traído falló al probarlo), el de la tabla vale si es de esa pista.
+                preferredServer = carried.server
+                    ?: savedPrefs?.takeIf { it.audio == carried.audio.name }?.server?.takeIf { it.isNotBlank() }
+            } else savedPrefs?.let { p ->
                 if (p.server.isNotBlank()) preferredServer = p.server
                 if (p.audio.isNotBlank()) {
                     AudioTrack.values().firstOrNull { it.name == p.audio }?.let { preferredAudio = it }
@@ -390,6 +431,10 @@ class PlayerActivity : FragmentActivity() {
         // that is lower than the episode being watched (Inicio derives it from favorite_series),
         // and that must not turn "previous episode" into a silent no-op.
         if (ep > number && ep > maxEpisode) return
+        // Una sola vez: un ⏭ mantenido (o dos seguidos antes de que el siguiente tome el foco)
+        // lanzaba dos reproductores del mismo episodio, uno encima de otro.
+        if (leavingEpisode) return
+        leavingEpisode = true
         lifecycleScope.launch {
             // The target episode may already be watched (e.g. stepping back one episode).
             val watched = local.isWatched(slug, ep)
@@ -408,7 +453,16 @@ class PlayerActivity : FragmentActivity() {
                 putExtra("isWatched", watched)
                 // Arrastra servidor Y pista: si venías viendo el doblaje, el episodio siguiente
                 // también empieza doblado.
-                selectedEmbed?.let {
+                val carry = unsavedUserChoice()
+                if (carry != null) {
+                    // Una elección del usuario que la tabla aún no tiene: el siguiente episodio la
+                    // trata como guardada (ver `carriedPref`).
+                    carry.server?.let { putExtra("preferredServer", it) }
+                    putExtra("preferredAudio", carry.audio.name)
+                    putExtra("preferredFromUser", true)
+                } else selectedEmbed?.let {
+                    // Lo que está sonando sin ser elección del usuario (el pick por defecto, un
+                    // fallback): si hay preferencia guardada, allí manda ella.
                     putExtra("preferredServer", it.server)
                     putExtra("preferredAudio", it.audio.name)
                 }
@@ -584,7 +638,10 @@ class PlayerActivity : FragmentActivity() {
         note: String? = null
     ) {
         selectedEmbed = embed
-        if (fromUser) pendingPrefEmbed = embed
+        // También cuenta como elección del usuario la traída de otro episodio (`carriedPref`),
+        // llegue por el pick por defecto, por el fallback o por "Reintentar": si suena, se guarda.
+        // Si este episodio no la tiene, lo que se ponga no la iguala y no se guarda nada.
+        if (fromUser || matchesCarried(embed)) pendingPrefEmbed = embed
         serverAdapter.setSelected(embed)
         closeServerPanel()
         pendingServerSwitch = switchInPlace
@@ -615,12 +672,49 @@ class PlayerActivity : FragmentActivity() {
         val server = embed.server
         val repo = local
         AnimeApp.appScope.launch { repo.rememberPrefs(s, audio, server) }
+        // Pasa a ser lo que viaja: es lo mismo que acaba de ir a la tabla, pero no depende de que
+        // esa escritura (fire-and-forget) termine antes de que el episodio siguiente la lea.
+        carriedPref = CarriedPref(embed.server, embed.audio)
+    }
+
+    /** [embed] es exactamente la elección traída: mismo servidor Y misma pista. */
+    private fun matchesCarried(embed: EmbedServer): Boolean {
+        val c = carriedPref ?: return false
+        return c.audio == embed.audio && c.server?.equals(embed.server, ignoreCase = true) == true
+    }
+
+    /**
+     * La elección del usuario que `series_prefs` aún no tiene, si la hay: la que está resolviendo,
+     * la que suena sin haber llegado a guardarse, o la traída de un episodio anterior.
+     * ⚠️ Se decide AQUÍ, al cambiar de episodio, y no con un "última elección" apuntado al elegir:
+     * así una elección sustituida por otra no viaja, una que falló tampoco (`noteSourceFailed` ya la
+     * quitó) y la que sigue sonando tras fallar la siguiente sí.
+     */
+    private fun unsavedUserChoice(): CarriedPref? {
+        val pick = pendingPrefEmbed ?: currentStreamEmbed?.takeIf { currentStreamPicked }
+        return pick?.let { CarriedPref(it.server, it.audio) } ?: carriedPref
+    }
+
+    /** La pista es obligatoria; el servidor no (una elección que falló viaja solo como pista). */
+    private fun carriedPrefOf(server: String?, audio: String?): CarriedPref? {
+        val track = AudioTrack.values().firstOrNull { it.name == audio } ?: return null
+        return CarriedPref(server?.takeIf { it.isNotBlank() }, track)
+    }
+
+    override fun onSaveInstanceState(outState: Bundle) {
+        super.onSaveInstanceState(outState)
+        carriedPref?.let {
+            outState.putString(STATE_CARRIED_SERVER, it.server)
+            outState.putString(STATE_CARRIED_AUDIO, it.audio.name)
+        }
     }
 
     /** Una fuente no ha resuelto, se ha quedado callada o media3 ha dado error. */
     private fun noteSourceFailed(embed: EmbedServer) {
         AnimeRepository.markSourceFailed(embed.url)
         if (pendingPrefEmbed == embed) pendingPrefEmbed = null
+        // La elección traída se ha probado y no ha sonado: se queda la pista, se va el servidor.
+        if (matchesCarried(embed)) carriedPref = carriedPref?.copy(server = null)
         // La que acaba de fallar ya no es "la que funcionaba": volver a ella costaría otros 25 s
         // de watchdog antes de probar las que quedan sin probar.
         if (lastWorkingEmbed == embed) lastWorkingEmbed = null
@@ -1554,5 +1648,7 @@ class PlayerActivity : FragmentActivity() {
         private const val WATCHED_REMAINING_MS = 2 * 60 * 1000L   // mark watched when ≤ 2 min remain
         private const val NEXT_CARD_REMAINING_MS = 30 * 1000L     // offer next episode when ≤ 30 s remain
         private const val NEXT_COUNTDOWN_SECS = 10                // auto-advance countdown (seconds)
+        private const val STATE_CARRIED_SERVER = "carriedServer"
+        private const val STATE_CARRIED_AUDIO  = "carriedAudio"
     }
 }
