@@ -3,6 +3,7 @@ package com.animeav1.ui.player
 import android.content.Intent
 import android.os.Build
 import android.os.Bundle
+import android.os.SystemClock
 import android.view.KeyEvent
 import android.view.View
 import android.view.WindowManager
@@ -22,9 +23,15 @@ import androidx.media3.common.MediaItem
 import androidx.media3.common.MimeTypes
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
+import androidx.media3.common.Tracks
 import androidx.media3.common.util.UnstableApi
+import androidx.media3.datasource.DataSource
+import androidx.media3.datasource.DataSpec
 import androidx.media3.datasource.DefaultHttpDataSource
+import androidx.media3.datasource.TransferListener
+import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.analytics.AnalyticsListener
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.ui.DefaultTimeBar
 import androidx.media3.ui.PlayerView
@@ -147,6 +154,48 @@ class PlayerActivity : FragmentActivity() {
      * Con un hueco suelto, que la segunda fallara borraba la primera —que sí sonó— y no se guardaba.
      */
     private var currentStreamPicked = false
+
+    /** El stream de [currentStreamUrl] ya ha llegado a READY alguna vez (paciencia del watchdog). */
+    private var currentStreamPlayed = false
+
+    /**
+     * Última vez que llegaron bytes de la red (lo escribe el hilo de carga de media3). Con esto el
+     * watchdog distingue un handshake lento de un CDN muerto: un nodo de MP4Upload en racha lenta
+     * tarda hasta ~42 s en contestar al TLS sin mandar nada, y no está muerto.
+     */
+    @Volatile private var lastNetActivityAt = 0L
+
+    private val netActivity = object : TransferListener {
+        override fun onTransferInitializing(source: DataSource, dataSpec: DataSpec, isNetwork: Boolean) {}
+        override fun onTransferStart(source: DataSource, dataSpec: DataSpec, isNetwork: Boolean) {
+            if (isNetwork) lastNetActivityAt = SystemClock.elapsedRealtime()
+        }
+        override fun onBytesTransferred(source: DataSource, dataSpec: DataSpec, isNetwork: Boolean, bytesTransferred: Int) {
+            if (isNetwork) lastNetActivityAt = SystemClock.elapsedRealtime()
+        }
+        override fun onTransferEnd(source: DataSource, dataSpec: DataSpec, isNetwork: Boolean) {}
+    }
+
+    /**
+     * El player actual tiene pista de vídeo pero ningún decodificador la ha aceptado: sonaría SOLO
+     * AUDIO sobre negro. Lo pone `onTracksChanged` antes del READY de la misma actualización, para
+     * que ese READY no la dé por buena (ni la guarde como preferencia).
+     */
+    private var videoUnplayable = false
+
+    /**
+     * La fuente que el usuario ha mandado reintentar ("Reintentar" en la pantalla de error): cuenta
+     * como elegida por él —paciencia de 50 s, y no se salta aunque su nodo esté marcado como lento—,
+     * pero NO se guarda como preferencia de la serie (reintentar no es elegir).
+     */
+    private var retriedEmbed: EmbedServer? = null
+
+    /** Cuándo se creó el player del stream actual (para medir cuánto tarda en empezar a sonar). */
+    private var playerStartedAt = 0L
+
+    /** Cuándo empezó a sonar el player actual y cuántos fotogramas AV1 ha perdido desde entonces. */
+    private var playingSinceAt = 0L
+    private var av1DroppedFrames = 0
     private var currentReferer: String = AnimeRepository.BASE_URL
     private var resumePositionMs: Long = 0L
     private var resumePlayWhenReady: Boolean = true
@@ -524,7 +573,8 @@ class PlayerActivity : FragmentActivity() {
                 when (state) {
                     is StreamState.Resolving ->
                         showLoading(loadingNote ?: "Cargando vídeo desde ${labelOf(state.embed)}…")
-                    is StreamState.Ready -> playStream(state.url, state.referer, state.embed)
+                    is StreamState.Ready ->
+                        if (!skipKnownSlowNode(state)) playStream(state.url, state.referer, state.embed)
                     is StreamState.Failed -> {
                         if (player != null && state.embed == playingEmbed) {
                             // Volver a pedir la fuente que ESTÁ sonando y que falle (un corte de un
@@ -601,7 +651,10 @@ class PlayerActivity : FragmentActivity() {
         // esperando a que volviera a fallar. Solo reordena, y entre las que fallaron va última la
         // que lleva más tiempo muerta.
         val penalty = embeds.associateWith { AnimeRepository.failurePenalty(it.url) }
-        val inTrack = embeds.filter { it.audio == track }.sortedBy { penalty.getValue(it) }  // estable
+        // Y a igualdad de fallos, MP4Upload delante si este aparato hace AV1 por hardware
+        // (PlaybackPolicy.rank); si no, el orden del sitio. Estable.
+        val inTrack = embeds.filter { it.audio == track }
+            .sortedWith(PlaybackPolicy.order({ penalty.getValue(it) }, Av1Support.hardwareMain10))
         return inTrack.firstOrNull { byName(it) && penalty.getValue(it) == 0L }
             ?: inTrack.firstOrNull { penalty.getValue(it) == 0L }
             // Si han fallado TODAS (un corte de red las marca a la vez), la guardada sigue siendo
@@ -712,8 +765,12 @@ class PlayerActivity : FragmentActivity() {
     }
 
     /** Una fuente no ha resuelto, se ha quedado callada o media3 ha dado error. */
-    private fun noteSourceFailed(embed: EmbedServer) {
-        AnimeRepository.markSourceFailed(embed.url)
+    private fun noteSourceFailed(embed: EmbedServer, streamUrl: String? = null) {
+        // De MP4Upload se marca el NODO que ha fallado (aN.mp4upload.com), no el proveedor entero:
+        // cada fichero vive en un nodo y solo `a3` tiene rachas lentas. Marcando www.mp4upload.com, un
+        // tropiezo de `a3` mandaba al final también los ficheros de `a4`, que van bien.
+        if (streamUrl != null && StreamUrlParser.isMp4Upload(streamUrl)) AnimeRepository.markSourceFailed(streamUrl)
+        else AnimeRepository.markSourceFailed(embed.url)
         if (pendingPrefEmbed == embed) pendingPrefEmbed = null
         // La elección traída se ha probado y no ha sonado: se queda la pista, se va el servidor.
         if (matchesCarried(embed)) carriedPref = carriedPref?.copy(server = null)
@@ -749,6 +806,7 @@ class PlayerActivity : FragmentActivity() {
         // que si coincide con la elección pendiente, ESTE stream es la elección.
         currentStreamPicked = embed == pendingPrefEmbed
         if (currentStreamPicked) pendingPrefEmbed = null
+        currentStreamPlayed = false
         currentReferer = referer
         resumePlayWhenReady = true
 
@@ -795,9 +853,21 @@ class PlayerActivity : FragmentActivity() {
         if (!playbackAllowed) return
         if (!lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) return
 
+        val mp4upload = StreamUrlParser.isMp4Upload(url)
+        lastNetActivityAt = SystemClock.elapsedRealtime()
+        playerStartedAt = lastNetActivityAt
+        videoUnplayable = false
+        playingSinceAt = 0L
+        av1DroppedFrames = 0
+
         val httpFactory = DefaultHttpDataSource.Factory()
             .setUserAgent(AnimeRepository.USER_AGENT)
             .setAllowCrossProtocolRedirects(true)
+            // ⚠️ En Android el handshake TLS lo limita el tiempo de LECTURA, y los nodos de
+            // MP4Upload tienen rachas de 8-42 s antes de contestar: con los 8 s de media3 cada
+            // intento moría y MP4Upload no llegaba a sonar. Ver PlaybackPolicy.
+            .setReadTimeoutMs(PlaybackPolicy.readTimeoutMs(url))
+            .setTransferListener(netActivity)
             .setDefaultRequestProperties(
                 mapOf(
                     "Referer" to currentReferer,
@@ -819,6 +889,7 @@ class PlayerActivity : FragmentActivity() {
 
         val exo = ExoPlayer.Builder(this)
             .setMediaSourceFactory(DefaultMediaSourceFactory(httpFactory))
+            .apply { if (mp4upload) setLoadControl(mp4UploadLoadControl()) }
             // Request audio focus (pause/duck for calls, assistant, other media) and
             // pause when audio becomes "noisy" (headphones/BT disconnect).
             .setAudioAttributes(audioAttrs, /* handleAudioFocus = */ true)
@@ -841,7 +912,12 @@ class PlayerActivity : FragmentActivity() {
                         }
                     Player.STATE_READY -> {
                         hideLoading(); bufferingSpinner.visibility = View.GONE
-                        onSourceWorking()
+                        if (!videoUnplayable) {
+                            if (!currentStreamPlayed) judgeMp4UploadNode()
+                            currentStreamPlayed = true
+                            if (playingSinceAt == 0L) playingSinceAt = SystemClock.elapsedRealtime()
+                            onSourceWorking()
+                        }
                     }
                     Player.STATE_ENDED -> {
                         bufferingSpinner.visibility = View.GONE
@@ -852,10 +928,38 @@ class PlayerActivity : FragmentActivity() {
                 updatePlayPauseLabel()
                 updateKeepScreenOn()
             }
+            override fun onTracksChanged(tracks: Tracks) {
+                // Hay vídeo y NINGUNA pista de vídeo seleccionada: ningún decodificador la acepta
+                // (lo típico, AV1 de MP4Upload en una tele sin decodificador AV1). media3 no da
+                // error: reproduce solo el audio sobre negro y llega a READY, y la app lo daba por
+                // bueno. Es una fuente que en este aparato no funciona: a la siguiente.
+                if (tracks.containsType(C.TRACK_TYPE_VIDEO) && !tracks.isTypeSelected(C.TRACK_TYPE_VIDEO)) {
+                    videoUnplayable = true
+                    val embed = currentStreamEmbed
+                    if (embed != null && chosenByUser(embed)) {
+                        // La eligió el usuario: se respeta —el audio sigue— y se dice por qué no hay
+                        // imagen, en vez de un "error de reproducción" que apunta a la red.
+                        playerView.post {
+                            if (player === exo) Toast.makeText(
+                                this@PlayerActivity, getString(R.string.video_unsupported, labelOf(embed)),
+                                Toast.LENGTH_LONG
+                            ).show()
+                        }
+                    } else {
+                        playerView.post { if (player === exo) onPlaybackError() }
+                    }
+                }
+            }
             override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
                 updatePlayPauseLabel()
                 updateKeepScreenOn()
             }
+        })
+
+        exo.addAnalyticsListener(object : AnalyticsListener {
+            override fun onDroppedVideoFrames(
+                eventTime: AnalyticsListener.EventTime, droppedFrames: Int, elapsedMs: Long
+            ) = onDroppedFrames(exo, droppedFrames)
         })
 
         // The HLS URL (Zilla) has no .m3u8 extension, so set the MIME type explicitly.
@@ -885,6 +989,7 @@ class PlayerActivity : FragmentActivity() {
         currentStreamUrl = null
         currentStreamEmbed = null
         currentStreamPicked = false
+        currentStreamPlayed = false
     }
 
     private fun releasePlayer() {
@@ -914,14 +1019,33 @@ class PlayerActivity : FragmentActivity() {
      */
     private fun onPlaybackError() {
         val failed = playingEmbed ?: selectedEmbed
+        val failedUrl = currentStreamUrl
         val wasPlaying = player != null
         releasePlayer()
         forgetStream()
+        if (deferToUserPick(failed, failedUrl)) return
         vm.clearStream()
-        failed?.let { noteSourceFailed(it) }
+        failed?.let { noteSourceFailed(it, failedUrl) }
         if (failed != null && fallBackFrom(failed, switchInPlace = wasPlaying)) return
         showError("Error de reproducción. Prueba otro servidor.")
         openServerPanel()
+    }
+
+    /**
+     * Si el que acaba de fallar es el stream VIEJO mientras una elección del panel todavía resuelve
+     * ([pendingPrefEmbed]), no se salta a otra fuente: pisaría la que el usuario acaba de pedir (y
+     * `vm.clearStream()` cancelaría su resolución). Se deja que la suya termine, y reanudará en el
+     * sitio (`releasePlayer` ya guardó la posición). Pasaba con cualquier fallo automático del viejo:
+     * el watchdog, un error de media3, el vídeo sin decodificador o los fotogramas perdidos de AV1.
+     * @return true si se ha dejado paso a la elección.
+     */
+    private fun deferToUserPick(failed: EmbedServer?, failedUrl: String?): Boolean {
+        val pick = pendingPrefEmbed ?: return false
+        if (selectedEmbed != pick || failed == pick) return false
+        failed?.let { noteSourceFailed(it, failedUrl) }
+        pendingServerSwitch = true
+        showLoading(loadingNote ?: "Cargando vídeo desde ${labelOf(pick)}…")
+        return true
     }
 
     /** Watchdog: buffering that doesn't download anything for a while counts as a dead stream
@@ -944,7 +1068,7 @@ class PlayerActivity : FragmentActivity() {
                         stalledMs = 0L
                     } else {
                         stalledMs += STALL_CHECK_INTERVAL_MS
-                        if (stalledMs >= STALL_TIMEOUT_MS) {
+                        if (isStalled(stalledMs)) {
                             onStallTimeout()
                             return@launch
                         }
@@ -956,6 +1080,100 @@ class PlayerActivity : FragmentActivity() {
             }
         }
     }
+
+    /**
+     * MP4Upload puesto por la APP que acaba de resolverse a un nodo marcado como lento hace poco: se
+     * pasa ya a la siguiente fuente, sin esperar sus 8 s de silencio ni un arranque de 20-40 s. El
+     * nodo solo se sabe al resolver (la URL del vídeo), ~0,5 s. No se salta si lo eligió el usuario
+     * ni si es el último recurso.
+     */
+    private fun skipKnownSlowNode(state: StreamState.Ready): Boolean {
+        if (!StreamUrlParser.isMp4Upload(state.url)) return false
+        if (AnimeRepository.failurePenalty(state.url) == 0L) return false
+        if (pendingPrefEmbed == state.embed || chosenByUser(state.embed)) return false
+        if (nextUntriedSource(state.embed) == null) return false
+        val keepPosition = pendingServerSwitch
+        pendingServerSwitch = false
+        return fallBackFrom(state.embed, switchInPlace = keepPosition)
+    }
+
+    /**
+     * Primer READY de un MP4Upload: si ha tardado demasiado ([PlaybackPolicy.isSlowStart]), su nodo
+     * se apunta como lento aunque no haya fallado —`a3` puede tardar ~17 s en dar el `moov` sin
+     * callarse nunca—, y los episodios siguientes que caigan en él lo saltan si hay otra fuente. Si
+     * ha ido rápido, se le quita la marca: así se nota cuando el nodo se recupera.
+     */
+    private fun judgeMp4UploadNode() {
+        val url = currentStreamUrl ?: return
+        if (!StreamUrlParser.isMp4Upload(url) || playerStartedAt == 0L) return
+        val took = SystemClock.elapsedRealtime() - playerStartedAt
+        if (PlaybackPolicy.isSlowStart(took)) AnimeRepository.markSourceFailed(url)
+        else AnimeRepository.markSourceWorking(url)
+    }
+
+    /**
+     * Si un búfer parado [stalledMs] es un stream muerto. Para casi todo, la regla de siempre: 25 s
+     * sin avanzar. Para MP4Upload además tiene que haber SILENCIO DE RED todo ese tiempo, y la
+     * paciencia depende de quién lo puso ([PlaybackPolicy.quietBudgetMs]): un handshake de 40 s en un
+     * nodo en racha lenta no manda ni un byte y no está muerto, y al reanudar a mitad de episodio
+     * son DOS conexiones seguidas (la del `moov` y la del salto), cada una con su handshake.
+     */
+    private fun isStalled(stalledMs: Long): Boolean {
+        val url = currentStreamUrl
+        if (url == null || !StreamUrlParser.isMp4Upload(url)) return stalledMs >= PlaybackPolicy.DEFAULT_STALL_MS
+        val embed = currentStreamEmbed
+        val patient = currentStreamPlayed || chosenByUser(embed) || embed == null || nextUntriedSource(embed) == null
+        val budget = PlaybackPolicy.quietBudgetMs(isMp4Upload = true, patient = patient)
+        val quietMs = SystemClock.elapsedRealtime() - lastNetActivityAt
+        return stalledMs >= budget && quietMs >= budget
+    }
+
+    /** [embed] lo eligió el usuario: en el panel, o es su preferencia (guardada o traída). */
+    private fun chosenByUser(embed: EmbedServer?): Boolean {
+        embed ?: return false
+        if (currentStreamPicked || matchesCarried(embed) || embed == retriedEmbed) return true
+        val saved = savedPrefs ?: return false
+        return saved.audio == embed.audio.name && saved.server.equals(embed.server, ignoreCase = true)
+    }
+
+    /**
+     * Un decodificador AV1 que dice ir por hardware y no da abasto (hay un caso público en el
+     * Chromecast with Google TV HD) no da ningún error: pierde fotogramas. Si en el primer minuto
+     * pierde demasiados ([PlaybackPolicy.av1Misbehaving]), se apunta que en este aparato AV1 no es
+     * de fiar —MP4Upload deja de ir primero— y, si lo puso la app y queda otra fuente, se cambia a
+     * ella sin perder la posición. Si lo eligió el usuario, se respeta y sigue sonando.
+     */
+    private fun onDroppedFrames(exo: ExoPlayer, dropped: Int) {
+        if (player !== exo || playingSinceAt == 0L) return
+        if (exo.videoFormat?.sampleMimeType != MimeTypes.VIDEO_AV1) return
+        val playingFor = SystemClock.elapsedRealtime() - playingSinceAt
+        if (playingFor > PlaybackPolicy.AV1_JUDGE_WINDOW_MS) return
+        av1DroppedFrames += dropped
+        if (!PlaybackPolicy.av1Misbehaving(av1DroppedFrames, playingFor)) return
+        val embed = playingEmbed ?: return
+        val putByApp = Av1Support.hardwareMain10 && !chosenByUser(embed)
+        Av1Support.markUnreliable(this)
+        if (putByApp && pendingPrefEmbed == null && nextUntriedSource(embed) != null) {
+            playerView.post { if (player === exo) onPlaybackError() }
+        }
+    }
+
+    /**
+     * Búfer para MP4Upload (ver [PlaybackPolicy]): 120 s porque cada reconexión cuesta otro
+     * handshake lento (el servidor cierra la conexión tras cada respuesta), con tope en bytes para
+     * las teles con poca memoria y 30 s hacia atrás para que ⏪10 s no abra otra conexión.
+     */
+    private fun mp4UploadLoadControl(): DefaultLoadControl = DefaultLoadControl.Builder()
+        .setBufferDurationsMs(
+            PlaybackPolicy.MP4UPLOAD_BUFFER_MS,
+            PlaybackPolicy.MP4UPLOAD_BUFFER_MS,
+            DefaultLoadControl.DEFAULT_BUFFER_FOR_PLAYBACK_MS,
+            DefaultLoadControl.DEFAULT_BUFFER_FOR_PLAYBACK_AFTER_REBUFFER_MS
+        )
+        .setTargetBufferBytes(PlaybackPolicy.MP4UPLOAD_BUFFER_BYTES)
+        .setPrioritizeTimeOverSizeThresholds(false)
+        .setBackBuffer(PlaybackPolicy.MP4UPLOAD_BACK_BUFFER_MS, /* retainBackBufferFromKeyframe = */ true)
+        .build()
 
     /**
      * Siguiente fuente sin probar **de la misma pista de audio** que [failed].
@@ -970,7 +1188,7 @@ class PlayerActivity : FragmentActivity() {
         lastWorkingEmbed?.takeIf { it != failed && it.audio == failed.audio }?.let { return it }
         return embedList
             .filter { it.audio == failed.audio && it !in triedEmbeds }
-            .sortedBy { AnimeRepository.failurePenalty(it.url) }   // estable: si no, orden del sitio
+            .sortedWith(PlaybackPolicy.order({ AnimeRepository.failurePenalty(it.url) }, Av1Support.hardwareMain10))
             .firstOrNull()
     }
 
@@ -978,11 +1196,13 @@ class PlayerActivity : FragmentActivity() {
         val stalled = playingEmbed ?: selectedEmbed
         val label = stalled?.let { labelOf(it) }
         // ⚠️ Antes de releasePlayer(): después ya no se puede saber que había algo reproduciéndose.
+        val stalledUrl = currentStreamUrl
         val wasPlaying = player != null
         releasePlayer()
         forgetStream()
+        if (deferToUserPick(stalled, stalledUrl)) return
         vm.clearStream()
-        stalled?.let { noteSourceFailed(it) }
+        stalled?.let { noteSourceFailed(it, stalledUrl) }
         // Un CDN que acepta la conexión y no manda un byte es EL caso típico de "prueba otra fuente":
         // el usuario no puede hacer nada con esa información, así que se intenta solo.
         if (stalled != null && fallBackFrom(stalled, switchInPlace = wasPlaying)) return
@@ -1498,6 +1718,7 @@ class PlayerActivity : FragmentActivity() {
         // red pasajero, cada pulsación reintentaba SOLO la última fuente que falló —25 s de watchdog
         // por pulsación— y `nextUntriedSource` devolvía siempre null.
         triedEmbeds.clear()
+        retriedEmbed = embed
         onServerSelected(embed)
     }
 
@@ -1670,7 +1891,6 @@ class PlayerActivity : FragmentActivity() {
         private const val CONTROLS_UPDATE_MS = 500L
         private const val END_MONITOR_INTERVAL_MS = 1_000L
         private const val STALL_CHECK_INTERVAL_MS = 1_000L
-        private const val STALL_TIMEOUT_MS = 25_000L              // buffering w/o progress = dead stream
         private const val WATCHED_REMAINING_MS = 2 * 60 * 1000L   // mark watched when ≤ 2 min remain
         private const val NEXT_CARD_REMAINING_MS = 30 * 1000L     // offer next episode when ≤ 30 s remain
         private const val NEXT_COUNTDOWN_SECS = 10                // auto-advance countdown (seconds)

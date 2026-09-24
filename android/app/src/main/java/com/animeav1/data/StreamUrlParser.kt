@@ -85,6 +85,22 @@ internal object StreamUrlParser {
         "$scheme://$host/"
     }.getOrNull()
 
+    /**
+     * Si [url] es de MP4Upload: el embed (`www.mp4upload.com/embed-…`) o el vídeo en uno de sus
+     * nodos (`aN.mp4upload.com:183/d/…/video.mp4`). Por host exacto o subdominio, no por subcadena:
+     * `"mp4upload" in url` casaría con cualquier ruta que lo mencione.
+     */
+    fun isMp4Upload(url: String): Boolean {
+        val host = runCatching { URI(url).host?.lowercase() }.getOrNull() ?: return false
+        return host == "mp4upload.com" || host.endsWith(".mp4upload.com")
+    }
+
+    /** Si [url] es de Zilla (el servidor "HLS"), cuyos segmentos son fMP4 con AV1. */
+    fun isZilla(url: String): Boolean {
+        val host = runCatching { URI(url).host?.lowercase() }.getOrNull() ?: return false
+        return host == "zilla-networks.com" || host.endsWith(".zilla-networks.com")
+    }
+
     // ── Sec-Fetch-Site ────────────────────────────────────────────────────────────────────────
 
     /**
