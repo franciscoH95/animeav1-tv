@@ -20,7 +20,11 @@ Room, media3 (ExoPlayer), Coil. `applicationId = com.animeav1`, `minSdk 21`, `ta
 - **Tests:** `./gradlew :app:testDebugUnitTest` (JVM, sin emulador). **Lint:** `./gradlew :app:lintDebug`
   — `abortOnError = true`, así que un `NewApi` por encima de `minSdk` rompe la build en vez de crashear
   en el salón de alguien. `assembleRelease` ejecuta `lintVitalRelease`, así que también depende de esto.
-- **Emulador:** API 34, imagen Play Store → no root, no se puede fijar el reloj por adb.
+- **Emulador:** AVD `Television_4K` (API 36, 3840×2160), imagen Play Store → no root. ⚠️ Si el reloj
+  se queda desfasado (se vio 30 días atrás), TODA petición a animeav1 falla con **"Chain validation
+  failed"** —su certificado aún no era válido en la fecha del emulador— y la app lo enseña tal cual.
+  Sin root sí se puede fijar: `adb shell cmd time_detector suggest_network_time --elapsed_realtime
+  <uptime ms> --unix_epoch_time <epoch ms del host>`; `cmd time_detector clear_network_time` lo deshace.
 - **⚠️ Gotcha de firma:** `adb install -r` suele fallar con `INSTALL_FAILED_UPDATE_INCOMPATIBLE`
   (la versión instalada por Android Studio se firma con otra clave). **Solución:** `adb uninstall com.animeav1`
   y luego `adb install ...`. Esto **borra los datos locales** (Room) del emulador — normal en pruebas.
@@ -39,7 +43,8 @@ data/
   AnimeRepository.kt    object singleton; OkHttp + scraping + cachés en memoria (LruCache(128) + TTL)
   SvelteKitDecoder.kt   resuelve el formato __data.json "aplanado" de SvelteKit
   StreamUrlParser.kt    mitad PURA de la resolución de stream (regex + transform Zilla +
-                        secFetchSite), sin red ni Android
+                        secFetchSite + ¿es una playlist?), sin red ni Android
+  VoeParser.kt          mitad PURA de Voe: stub → redirección JS → payload ofuscado; ver "Voe"
   EmbedParser.kt        mitad PURA de la lectura de servidores del episodio: resuelve el nodo
                         `embeds` a List<EmbedServer> con AMBAS pistas (SUB+DUB) etiquetadas
   BackupCodec.kt        mitad PURA del formato de copia de seguridad (JSON ⇄ las 3 tablas)
@@ -68,11 +73,14 @@ ui/
   update/               UpdateActivity ("Hay una versión nueva" → descarga → instala)
 AnimeApp.kt             Application; AnimeRepository.init(); appScope (ver más abajo)
 
-app/src/test/            tests JVM puros (JUnit4), 97 en total. Fixtures REALES capturados del
-                         sitio en test/resources/: catalogo__data.json, mp4upload-embed.html y
-                         episodio__data.json (dandadan ep.1 — el único con SUB *y* DUB). Cubren
-                         SvelteKitDecoder, StreamUrlParser, EmbedParser, MediaType, UpdateManifest
-                         y BackupCodec (incluido
+app/src/test/            tests JVM puros (JUnit4), 111 en total. Fixtures REALES capturados del
+                         sitio en test/resources/: catalogo__data.json, mp4upload-embed.html,
+                         episodio__data.json (dandadan ep.1 — el único con SUB *y* DUB; captura
+                         del 2026-09-24, ya con Voe y Byse) y las dos páginas de Voe
+                         (voe-embed.html, el stub; voe-player.html, la real, recortada y con la
+                         IP/ASN de quien la capturó sustituidos). Cubren
+                         SvelteKitDecoder, StreamUrlParser, EmbedParser, VoeParser, MediaType,
+                         UpdateManifest y BackupCodec (incluido
                          que un backup del FORMAT 1 se siga importando, y que un FORMAT 3 SIN el
                          campo aditivo `prefs` siga entrando entero) — las piezas que más
                          veces se han roto. `org.json:json` está como testImplementation porque
@@ -146,10 +154,11 @@ rejilla y como "Película" en su ficha. La ficha es la que manda, y es la que se
 reproducible por ExoPlayer:
 
 - **HLS (Zilla)** → transform directo: `player.zilla-networks.com/play/<id>` ⇒ `/m3u8/<id>` (id de 32 chars).
-  Sin JS, sin token. Es el más fiable, pero ⚠️ **no hay ninguna priorización en código**: el reproductor
-  toma el **índice 0** de lo que devuelve el sitio (o el `preferredServer`/`preferredAudio` heredados del
-  episodio anterior). Hoy Zilla sale primero porque el sitio lo lista primero; si eso cambiara, cambiaría
-  el servidor por defecto.
+  Sin JS, sin token. Fue el más fiable hasta que se cayó (ver abajo). ⚠️ **No hay ninguna priorización
+  por proveedor en código**: el reproductor toma el **índice 0** de lo que devuelve el sitio (o el
+  `preferredServer`/`preferredAudio` heredados del episodio anterior), saltándose solo lo que ha fallado
+  hace poco. Hoy Zilla sale primero porque el sitio lo lista primero; si eso cambiara, cambiaría el
+  servidor por defecto.
   ⚠️⚠️ **La playlist NO basta: los segmentos exigen `Sec-Fetch-Site: same-origin`.** El Cloudflare que hay
   delante del CDN devuelve **403** a cada `/segs/<id>/NNN.html` cuyo request no traiga esa cabecera con ese
   valor **literal** (`same-site`, `cross-site`, `none` o cualquier otro → 403), mientras que `/m3u8/<id>` sí
@@ -159,19 +168,67 @@ reproducible por ExoPlayer:
   `StreamUrlParser.secFetchSite(url, referer)` (se calcula de verdad en lugar de mentir: para Zilla los
   segmentos van al mismo host que el embed). Los segmentos son **fMP4 (AV1) con extensión `.html`** —
   disfrazados a propósito; media3 los reconoce por sniffing, no por extensión ni Content-Type.
+  ⚠️⚠️ **Zilla está CAÍDO desde ~2026-09-21** (última captura buena en Wayback: 21-sep 05:52 UTC). Su
+  origen no contesta: Cloudflare da **522** a los ~20 s a TODO (playlist, `/play`, la raíz, un id
+  inventado), desde 25 nodos de 4 continentes y por dos colos distintos — no es un bloqueo nuestro. No
+  cambió la URL: el JS de su propio reproductor (aún en la caché de Cloudflare) construye exactamente
+  `/m3u8/<id>`, y la web de animeav1 incrusta el mismo iframe, así que allí tampoco funciona. Solo se
+  sirven segmentos viejos que Cloudflare tenía en caché, y sin playlist no sirven de nada. El sitio
+  sigue poniendo HLS el primero de cada pista. Si vuelve, funciona sin tocar nada.
+  ⚠️ **Por eso `resolveZilla` comprueba la playlist antes de darla por buena** (`playlistAnswers`: GET
+  con las cabeceras del reproductor —`Accept: */*`, no el `application/json` del interceptor global—,
+  tope TOTAL de 8 s y exige 200 + `#EXTM3U`, `StreamUrlParser.looksLikePlaylist`). El tope es más
+  estricto que media3 (8 s de conexión + 8 de lectura por intento, con reintentos) a propósito: un
+  Zilla vivo pero lentísimo se daría por caído, y lo único que cuesta es el orden. Antes la "resolución" era un cambio de texto que no fallaba
+  NUNCA: con Zilla caído media3 cortaba cada intento a los 8 s (timeout de lectura por defecto, sin
+  llegar a ver el 522), reintentaba, y solo el watchdog lo mataba a los 25 s — en CADA episodio, porque
+  HLS va el primero. Ahora falla al resolver, como cualquier otra fuente, y el fallback salta en ~8 s.
+  Con Zilla vivo cuesta una petición pequeña más antes de reproducir.
+- **Voe** (`voe.sx`, aparece en septiembre de 2026 en TODOS los episodios y en las dos pistas; en DUB
+  a veces DOS entradas con URLs distintas que resuelven al MISMO fichero — el panel enseña dos filas
+  "Voe" iguales, y `series_prefs` solo guarda el nombre, así que elegir la segunda reabre la primera) → **H.264 High de 8 bits** (720p, MPEG-TS) + AAC: el formato que mejor
+  decodifica cualquier aparato de los que ofrece el sitio. Dos páginas (`VoeParser`, mitad pura, y
+  `AnimeRepository.resolveVoe`, que sigue hasta 3 saltos):
+  1. `voe.sx/e/<id>` es un **stub** que redirige por JavaScript (`window.location.href = '…'`) a un
+     dominio **rotatorio** (`jamesbornmain.com` cuando se miró). No hay 3xx: OkHttp se queda en el stub.
+  2. La página real lleva la config del reproductor en `<script type="application/json">["…"]</script>`:
+     ROT13 → quitar el relleno (`@$ ^^ ~@ %? *~ !! #&`) → base64 → cada carácter −3 → invertir → base64
+     → JSON. De ahí `source` (el `master.m3u8`), y si no, el mp4 de `fallback` y luego `direct_access_url`.
+  ⚠️⚠️ **La página real trae un SEÑUELO**: `var source='https://test-videos.co.uk/…/Big_Buck_Bunny…mp4'`,
+  un clip AV1 de 10 s que SÍ se reproduce, y `directUrlFrom` lo encuentra antes que nada. Por eso Voe
+  **nunca** pasa por el scraper genérico (va en su propia rama de `extractStreamUrl`, ANTES del `else`):
+  si alguien lo "simplifica" siguiendo la redirección y reutilizando `directUrlFrom`, la app pone otro
+  vídeo sin ningún error y a los 10 s `STATE_ENDED` lo marca como visto. Hay un test para eso. Y por si
+  el sitio enlazara un día el dominio rotatorio en vez de `voe.sx` (que es lo único que reconoce
+  `VoeParser.handles`), el camino genérico tampoco se fía del host: `StreamUrlParser.streamFromEmbedPage`
+  reconoce la página de Voe **por su contenido** (`VoeParser.isPlayerPage`) y entonces solo vale el
+  payload. Si Voe cambia la ofuscación, `streamFrom` devuelve null y el fallback sigue en ~0,5 s.
+  La URL va atada a la IP y al ASN de quien la pidió y caduca a las 4 h (`e=14400`): los 10 min de
+  `STREAM_TTL` quedan por dentro. No exige `Referer` (se manda el de `voe.sx`, como a todos).
 - **MP4Upload** → el `.mp4` está en texto plano en el HTML del embed. **Requiere `Referer: mp4upload.com`**
   (con otro referer el CDN da 403 HTML). ⚠️ El regex DEBE anclar la extensión al final
   (`...\.mp4(?=["'\s<>]|$)`); si no, `.mp4` casa con el **dominio** `mp4upload.com` y extrae el `.js` del player.
-  Es indiferente a las cabeceras `Sec-Fetch-*` (verificado: 206 con y sin ellas).
+  Es indiferente a las cabeceras `Sec-Fetch-*` (verificado: 206 con y sin ellas). Es **AV1 Main de
+  10 bits** (1080p). ⚠️ Algún nodo (`a3.mp4upload.com`) tardó 8-24 s solo en el handshake TLS, por
+  encima de los 8 s de timeout de media3: un episodio servido desde ahí puede no arrancar.
 - **YourUpload** → el `.mp4` está en texto plano en el HTML del embed, en `vidcache.net:8161`, y
   **redirige** (302) a `s410.vidcache.net:8166` — funciona porque `setAllowCrossProtocolRedirects(true)`.
-  Requiere `Referer: yourupload.com` (sin él, HTTP 500). Es el único servidor en **H.264**: los demás
-  son AV1, así que es el que se ve bien en el emulador y en hardware sin decoder AV1. ⚠️ Su URL lleva
-  token de un solo uso — ver "Limitaciones conocidas".
+  Requiere `Referer: yourupload.com` (sin él, HTTP 500). ⚠️ Es H.264 pero **High 10 (10 bits)**
+  —medido con ffprobe—, un perfil que la mayoría de decoders H.264 por hardware de Android NO soporta:
+  no es el "H.264 que se ve en todas partes" (ese es Voe). Y casi ha desaparecido: en septiembre de
+  2026 solo lo traían las subidas antiguas (1 de 22 pistas). ⚠️ Su URL lleva token de un solo uso —
+  ver "Limitaciones conocidas".
 - **Servidores filtrados** (nunca llegan a la UI, lista en `EmbedParser.UNSUPPORTED_SERVERS`):
   - `Mega`, `UPNShare` (uns.bio) → cifran el stream y lo descifran con su JS de cliente.
   - `TeraBox`, `StreamTape`, `VidHide` → el HTML del embed no trae ninguna URL directa (0 coincidencias
-    de `directUrlFrom` en todos los embeds probados del sitio real).
+    de `directUrlFrom` en todos los embeds probados del sitio real). VidHide sirve ahora desde
+    `ryderjet.com` (respaldo por host): su JS empaquetado sí lleva playlists, pero todos sus segmentos
+    daban 522/502 o no contestaban.
+  - `Byse` (`byselapuix.com`, desde septiembre de 2026) → el embed es el cascarón de una SPA; la URL
+    sale de una API con **prueba de trabajo** propia (dice "sha256" y no lo es) + descifrado
+    **AES-256-GCM**, con código de atestación del aparato ya incluido en su JS. Se pudo resolver 5 de
+    5 veces, pero es frágil y en una TV la prueba de trabajo podría tardar segundos; Voe está en los
+    mismos episodios con el mismo H.264. Antes de filtrarlo llegaba a la UI y fallaba siempre.
   - `DoodStream` → responde el reto JS de Cloudflare ("Just a moment…", HTTP 403); un GET plano no lo pasa.
   - `Netu` (hqq.ac) → sí deja un `.m3u8` en el HTML, pero es un **señuelo**: ruta de 2018, timestamp de
     2020 y la IP `94.25.170.26` incrustada en la propia URL. Ni siquiera conecta.
@@ -180,7 +237,17 @@ reproducible por ExoPlayer:
   ofrecer sigue apareciendo y se le da la oportunidad de resolver. Y se compara por **nombre exacto** de
   servidor (+ un respaldo por host), no por subcadena: `"netu" in url` casaría por accidente con
   cualquier URL que contenga esa secuencia.
-- El `Referer` para ExoPlayer se deriva del **host del embed** (en `PlayerViewModel.refererOf`), no de animeav1.
+- **Todo lo que lleva a una URL de vídeo va por `streamClient`, SIN la caché de disco, y con tope
+  TOTAL** (`execute`, que usa el `callTimeout` de OkHttp vía `call.timeout()`: un `withTimeout` de
+  corrutinas no corta una llamada bloqueada). El cliente principal fuerza `max-age=300` a toda
+  respuesta buena: habría servido cinco minutos una página de YourUpload con su token de un solo uso
+  ya gastado, o una de Voe con la URL atada a una IP que ya no es la nuestra. Tope: 8 s la playlist de
+  Zilla, `RESOLVE_BUDGET_MS` = 10 s para la resolución entera de una página (Voe son DOS saltos y
+  comparten el tope). Sin él, un nodo que acepta la conexión y no contesta costaba 15-20 s por salto
+  —y OkHttp reintenta con la otra IP— con "Probando Voe…" en pantalla y sin watchdog, que solo
+  arranca con el player.
+- El `Referer` para ExoPlayer se deriva del **host del embed** (`StreamUrlParser.refererOf`, que usan
+  `PlayerViewModel` y la comprobación de la playlist de Zilla), no de animeav1.
 
 ### Pistas de audio (SUB / DUB)
 
@@ -226,7 +293,7 @@ lleva el `EmbedServer` entero. Si añades comparaciones por nombre, vuelves a me
   haría no-focusables y rompería la cadena `nextFocus` hacia Servidores/Visto): se atenúan con `alpha` y el
   clic es no-op por el guard de rango de `goToEpisode` (que además consulta el **visto real** en Room antes
   de lanzar el intent del episodio destino).
-- **Fuente preferida POR SERIE (no por episodio).** Al elegir servidor, `onServerSelected` guarda
+- **Fuente preferida POR SERIE (no por episodio).** Al elegir servidor en el panel se guarda
   `(pista, servidor)` en `series_prefs` para ESE perfil (fire-and-forget en `appScope`), y al abrir
   el reproductor esa preferencia **manda sobre los extras del intent**: los extras solo saben del
   episodio anterior, la tabla sabe de todas las veces que se ha visto la serie. Así, volver a una
@@ -241,7 +308,19 @@ lleva el `EmbedServer` entero. Si añades comparaciones por nombre, vuelves a me
   persistir esos convertía un accidente en la preferencia permanente de la serie. Un episodio recién
   emitido que el sitio publica solo en SUB dejaba fijada en subtitulado una serie que se veía
   DOBLADA (y no se autorreparaba: al reabrir volvía a escribir SUB), y un stall de 25 s en YourUpload
-  —el único H.264— la dejaba fijada en HLS.
+  la dejaba fijada en HLS.
+  ⚠️ **Y ni siquiera la del panel se guarda al pulsar: se guarda al llegar a `STATE_READY`**
+  (`pendingPrefEmbed` → `onSourceWorking`), y solo si lo que reproduce es lo que se eligió. Guardándola
+  al pulsar, un solo toque en HLS con Zilla caído dejaba la serie fijada a un servidor muerto: el
+  fallback nunca escribe preferencias, así que no se autorreparaba y cada episodio arrancaba esperándolo.
+  ⚠️ Un READY del stream **VIEJO** no consume la elección pendiente: mientras la nueva resuelve, el
+  player anterior sigue vivo y puede salir de un rebuffer o recibir un seek (media3 pasa
+  READY→BUFFERING→READY), y eso no dice nada de la elección. Solo se descarta si ya no es
+  `selectedEmbed` (la sustituyó el fallback) o si falló (`noteSourceFailed`). Consumiéndola en el
+  primer READY que llegara, justo el caso típico —cambiar porque el stream va a tirones— no se guardaba.
+  ⚠️ `playingEmbed` sale del embed de la URL (`currentStreamEmbed`, que va y se olvida SIEMPRE con
+  `currentStreamUrl`, vía `forgetStream`), no de `selectedEmbed`: en API 21-23 el player se recrea en
+  `onResume`, y con un cambio del panel aún resolviendo el stream viejo heredaba el nombre del nuevo.
   ⚠️ `pendingServerSwitch` lo decide **quien llama** (`switchInPlace`), no `player != null`: el
   fallback libera el player ANTES de llegar aquí, así que calcularlo dentro daba false y se perdía la
   posición — el episodio arrancaba de cero, o salía "¿Continuar viendo?" a mitad de reproducción. En
@@ -255,7 +334,37 @@ lleva el `EmbedServer` entero. Si añades comparaciones por nombre, vuelves a me
   ⚠️ Antes cualquier fallo eran 25 s de spinner y luego un panel de "servidores": una decisión
   técnica que un usuario final no puede tomar. Cubre los tres orígenes de fallo: resolución
   (`StreamState.Failed`), watchdog y **`PlaybackException` de media3** (`onPlaybackError`) — un error
-  de reproducción es igual de poco accionable para el usuario que un CDN callado.
+  de reproducción es igual de poco accionable para el usuario que un CDN callado. Los tres pasan por
+  `noteSourceFailed` + `fallBackFrom`.
+  ⚠️ **El aviso "X no responde. Probando Y…" va en `loadingNote`**, no escrito a pelo en `statusText`:
+  `onServerSelected` → `showLoading()` y luego `StreamState.Resolving` repintan el overlay, así que el
+  aviso duraba un frame y el usuario solo veía cambiar el nombre del servidor tras 25 s de espera.
+  ⚠️ **Antes que una desconocida, la que estaba sonando** (`lastWorkingEmbed`, la última que llegó a
+  READY en este episodio). Si el usuario cambia desde el panel y la nueva no arranca, se vuelve a la de
+  antes —UNA vez: si vuelve a fallar sin llegar a READY no se insiste—. Sin esto la cadena la saltaba
+  (ya estaba en `triedEmbeds`) y podía acabar en "Ninguna fuente responde" con una fuente que
+  funcionaba hacía un momento. Y deja de serlo en cuanto ELLA falla (`noteSourceFailed`): si no, tras
+  caerse a mitad de episodio la cadena volvía a ella —25 s más de watchdog— antes de probar las que
+  quedaban sin probar.
+  ⚠️ **Lo que ha fallado hace poco va al final** (`AnimeRepository.markSourceFailed/recentlyFailed`,
+  por HOST): el pick por defecto y `nextUntriedSource` lo dejan para el final, así que con un
+  proveedor caído el episodio siguiente ya no empieza esperándolo. Solo ORDENA —no esconde nada del
+  panel ni toca `series_prefs`— y llegar a READY lo borra (`markSourceWorking`). Va por host porque
+  cuando Zilla se cae, se caen todos sus episodios y las dos pistas a la vez.
+  - ⚠️ **El plazo crece con cada fallo seguido**: 10 min, 20, 40… hasta 2 h, y READY lo pone a cero.
+    Con 10 min fijos —menos que un episodio— en un maratón la marca ya había caducado al llegar el
+    siguiente, y una serie con "HLS" guardado (lo guardaba la versión anterior al pulsar, p. ej. al
+    elegir la primera fila de DOBLADO para cambiar de idioma) pagaba 8 s en cada episodio. Un plazo
+    fijo largo sería peor al revés: un corte de red de un momento dejaría a Voe al final durante horas.
+    Por eso al caducar la entrada NO se borra: la racha tiene que sobrevivir.
+  - ⚠️ **La pista se decide ANTES de ordenar** (`pickDefaultEmbed`): la preferida si el episodio la
+    trae; si no, la primera (SUB). Ordenando las dos pistas juntas, sin preferencia de audio (el caso
+    normal al abrir desde la ficha o Inicio) y con los hosts de SUB marcados, el primer "vivo" podía
+    ser de DOBLADO: pasa en episodios cuyo DUB tiene un host que su SUB no tiene (se encontró uno en
+    319: FMA Brotherhood ep. 50, con YourUpload solo en DUB).
+  - Marcar un fallo también **olvida la URL ya resuelta de ese embed** (`streamCache`): si no, durante
+    10 min "Reintentar" o volver a elegirlo entregaba la misma URL muerta, sin volver a comprobar la
+    playlist de Zilla.
 - **La pantalla de error es un modal y el D-pad tiene que llegar a sus botones.** `dispatchKeyEvent`
   la trata como tal (rama propia antes de la de "controles ocultos"). ⚠️ Sin esa rama, la de controles
   ocultos consumía TODAS las teclas devolviendo `true` y sus dos acciones (`showControls`/`scrub`)
@@ -1473,7 +1582,11 @@ sha256 y escriba el `update.json` como asset del release junto al APK.
   (El detalle de serie SÍ muestra "Estado · Año · Tipo" en el badge.)
 - **Servidores con JS (Mega/UPNShare):** no reproducibles nativamente; reintroducir un WebView solo como
   fallback sería una opción.
-- **URL de YourUpload de un solo uso + `streamCache`.** El `.mp4` que extrae YourUpload lleva un token
+- **URL de YourUpload de un solo uso + `streamCache`.** *(Mitigado: un fallo ya olvida la URL del
+  embed —`markSourceFailed`— y las páginas de embed ya no pasan por la caché de disco, así que
+  "Reintentar" vuelve a resolver con un token nuevo. Lo de abajo sigue valiendo cuando se vuelve a
+  elegir YourUpload dentro de los 10 min tras haber SONADO —cambiar a otra y volver—: esa URL no ha
+  fallado, así que sigue en `streamCache`.)* El `.mp4` que extrae YourUpload lleva un token
   que **cambia en cada scrape** (`vidcache.net:8161/a20260806<token>/video.mp4`) y redirige a
   `s410.vidcache.net:8166`. `extractStreamUrl` cachea la URL resuelta **10 min** (`STREAM_TTL`), así que
   volver a elegir YourUpload dentro de esa ventana puede entregarle a ExoPlayer un token ya muerto: no
@@ -1493,7 +1606,7 @@ sha256 y escriba el `update.json` como asset del release junto al APK.
   con debug como decía aquí: sale **sin firmar** (`app-release-unsigned.apk`, comprobado ejecutando
   `assembleRelease`), o sea que hoy una build de release **no se puede ni instalar**.
 - `versionCode`/`versionName` en 8 / 1.4.1 — subir en cada publicación.
-- **Cobertura de tests mínima:** solo hay tests JVM de `SvelteKitDecoder`, `StreamUrlParser`,
+- **Cobertura de tests mínima:** solo hay tests JVM de `SvelteKitDecoder`, `StreamUrlParser`, `VoeParser`,
   `EmbedParser`, `BackupCodec`, `AiringSchedule`, `MediaType` y `UpdateManifest`. Nada de Room (haría falta `androidTest` o Robolectric), ni de ViewModels, ni de UI —
   en particular, la selección SUB/DUB de `PlayerActivity` y el agrupado de `ServerAdapter` solo están
   verificados a mano en el emulador.
@@ -1505,7 +1618,8 @@ sha256 y escriba el `update.json` como asset del release junto al APK.
 
 ```
 # Catálogo→serie→agregar a lista:  tap poster → tap "Agregar a lista" → CENTER → tap "Por Ver"
-# Reproducir:  serie → tap episodio → CENTER (auto-reproduce 1er servidor; HLS por defecto)
+# Reproducir:  serie → tap episodio → CENTER (auto-reproduce 1er servidor: HLS si responde; con
+#              Zilla caído, "HLS no responde. Probando Voe…" en ~8 s y luego Voe)
 # Inspeccionar Room:  adb exec-out run-as com.animeav1 cat databases/animeav1.db > /tmp/x.db
 #                     (sin sqlite3 en el device; abrir con python sqlite3 en el host; tirar también -wal)
 ```

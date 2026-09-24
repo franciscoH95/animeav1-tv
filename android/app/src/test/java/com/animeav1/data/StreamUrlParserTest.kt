@@ -80,6 +80,39 @@ class StreamUrlParserTest {
         assertNull(StreamUrlParser.zillaM3u8("https://player.zilla-networks.com/play/deadbeef"))
     }
 
+    // ── Comprobación de la playlist (Zilla) ──────────────────────────────────────────────────
+
+    @Test
+    fun `una playlist hls se reconoce aunque traiga bom o blancos delante`() {
+        assertTrue(StreamUrlParser.looksLikePlaylist("#EXTM3U\n#EXT-X-VERSION:7\n"))
+        assertTrue(StreamUrlParser.looksLikePlaylist("\uFEFF#EXTM3U\n"))
+        assertTrue(StreamUrlParser.looksLikePlaylist("\r\n  #EXTM3U\n"))
+    }
+
+    /**
+     * Lo que Zilla devuelve caído (el cuerpo literal del 522 de Cloudflare) y el reto/bloqueo de
+     * Cloudflare, que puede llegar con 200: ninguno es una playlist, y dárselo a media3 son 25 s
+     * de spinner hasta el watchdog.
+     */
+    @Test
+    fun `ni un error de cloudflare ni una pagina html pasan por playlist`() {
+        assertFalse(StreamUrlParser.looksLikePlaylist("error code: 522"))
+        assertFalse(StreamUrlParser.looksLikePlaylist("<!DOCTYPE html><title>Attention Required! | Cloudflare</title>"))
+        assertFalse(StreamUrlParser.looksLikePlaylist(""))
+    }
+
+    // ── Referer ──────────────────────────────────────────────────────────────────────────────
+
+    @Test
+    fun `el referer es el origen del embed`() {
+        assertEquals(
+            "https://player.zilla-networks.com/",
+            StreamUrlParser.refererOf("https://player.zilla-networks.com/play/6a71c5a6e6fe622dc1ad7e764ccc41ed")
+        )
+        assertEquals("https://www.mp4upload.com/", StreamUrlParser.refererOf("https://www.mp4upload.com/embed-x.html"))
+        assertNull(StreamUrlParser.refererOf("no es una url"))
+    }
+
     // ── Sec-Fetch-Site ────────────────────────────────────────────────────────────────────────
 
     /**

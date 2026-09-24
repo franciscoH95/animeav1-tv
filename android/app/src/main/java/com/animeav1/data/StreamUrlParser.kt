@@ -29,6 +29,17 @@ internal object StreamUrlParser {
     }
 
     /**
+     * Si una respuesta es de verdad una playlist HLS. Se usa para comprobar Zilla ANTES de dárselo
+     * al reproductor: su "resolución" es un cambio de texto en la URL, así que sin esta comprobación
+     * un Zilla caído no fallaba nunca al resolver — solo lo cazaba el watchdog, 25 s después.
+     *
+     * Se mira el contenido y no solo el código HTTP: una página de error o de reto de Cloudflare
+     * puede venir con 200.
+     */
+    fun looksLikePlaylist(body: String): Boolean =
+        body.trimStart('\uFEFF', ' ', '\t', '\r', '\n').startsWith("#EXTM3U")
+
+    /**
      * Finds a directly playable URL in an embed page, preferring HLS (ExoPlayer handles it best).
      *
      * The extension MUST be anchored to the end of the URL (before a quote/space/angle bracket,
@@ -44,10 +55,35 @@ internal object StreamUrlParser {
         return null
     }
 
+    /**
+     * URL reproducible de la página de un embed cualquiera (el camino genérico: MP4Upload,
+     * YourUpload y lo que el sitio añada).
+     *
+     * ⚠️ Si la página resulta ser un reproductor de **Voe** —porque el sitio enlace un día su
+     * dominio rotatorio en vez de `voe.sx`, que es lo único que reconoce [VoeParser.handles]—, solo
+     * vale lo que diga su payload, y si no se entiende, nada. Esa página trae un Big Buck Bunny de
+     * 10 s como señuelo y [directUrlFrom] lo encontraría el primero: la app pondría otro vídeo sin
+     * ningún error y lo daría por visto al acabar.
+     */
+    fun streamFromEmbedPage(html: String): String? =
+        if (VoeParser.isPlayerPage(html)) VoeParser.streamFrom(html) else directUrlFrom(html)
+
     private val PATTERNS = listOf(
         Regex("""(https?://[^\s"'<>]+?\.m3u8(?:[?#][^\s"'<>]*)?)(?=["'\s<>]|$)"""),
         Regex("""(https?://[^\s"'<>]+?\.mp4(?:[?#][^\s"'<>]*)?)(?=["'\s<>]|$)"""),
     )
+
+    /**
+     * `Referer` que se manda al CDN de una fuente: el origen del **embed** (`https://host/`), no
+     * animeav1 — MP4Upload y YourUpload rechazan cualquier otro. Null si la URL no se entiende.
+     * Lo usan el reproductor y la comprobación de la playlist de Zilla, que tienen que mandar lo mismo.
+     */
+    fun refererOf(embedUrl: String): String? = runCatching {
+        val u = URI(embedUrl)
+        val scheme = u.scheme ?: return null
+        val host = u.host ?: return null
+        "$scheme://$host/"
+    }.getOrNull()
 
     // ── Sec-Fetch-Site ────────────────────────────────────────────────────────────────────────
 

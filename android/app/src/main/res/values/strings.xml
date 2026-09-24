@@ -157,7 +157,7 @@
     <string name="header_relations">Series relacionadas</string>
 
     <!-- Reproductor: fallback automático de fuente -->
-    <string name="source_falling_back">Esa fuente no responde. Probando %1$s…</string>
+    <string name="source_falling_back">%1$s no responde. Probando %2$s…</string>
     <string name="source_all_failed">Ninguna fuente responde (la última: %1$s). Prueba otra o vuelve más tarde.</string>
     <string name="source_none_works">No se pudo reproducir el episodio. Prueba otra fuente.</string>
 

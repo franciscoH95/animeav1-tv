@@ -10,6 +10,8 @@ import okhttp3.ConnectionPool
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.io.File
+import java.io.InterruptedIOException
+import java.net.URI
 import java.net.URLEncoder
 import java.util.concurrent.TimeUnit
 
@@ -25,6 +27,33 @@ object AnimeRepository {
     private const val STREAM_TTL   = 10 * 60 * 1000L   // 10 min
     private const val SCHEDULE_TTL = 60 * 60 * 1000L   //  1 hour
 
+    /**
+     * Tope TOTAL (DNS + conexión + TLS + respuesta) para comprobar la playlist de Zilla antes de
+     * reproducir. ⚠️ Es más estricto que media3 a propósito, no igual: media3 da 8 s de conexión +
+     * 8 s de lectura por intento y reintenta. Un Zilla vivo pero lentísimo (más de 8 s para una
+     * playlist de pocos KB) se daría por caído, y lo que cuesta es solo el orden: HLS sigue en el
+     * panel y en la cadena de fallback. Con Zilla caído, Cloudflare tarda ~20 s en dar el 522.
+     */
+    private const val PLAYLIST_PROBE_TIMEOUT_MS = 8_000L
+
+    /**
+     * Tope TOTAL para sacar la URL de la página de un embed, contando todos los saltos (Voe son
+     * dos). Lo normal es ~1,3 s; sin tope, un nodo que acepta la conexión y no contesta se comía
+     * 15 s de conexión o 20 s de lectura POR SALTO —y OkHttp reintenta con la otra IP— con el
+     * usuario mirando "Probando Voe…" y sin watchdog que lo vigile (ese empieza con el player).
+     */
+    private const val RESOLVE_BUDGET_MS = 10_000L
+
+    /** Saltos de redirección por JavaScript que se siguen en Voe (stub → página real, y margen). */
+    private const val VOE_MAX_HOPS = 3
+
+    /**
+     * Cuánto se da por caído un proveedor que acaba de fallar: 10 min la primera vez y el doble
+     * con cada fallo seguido, hasta 2 h; reproducir con él lo borra. Ver [markSourceFailed].
+     */
+    private const val FAILED_SOURCE_BASE_TTL = 10 * 60 * 1000L
+    private const val FAILED_SOURCE_MAX_TTL  = 2 * 60 * 60 * 1000L
+
     // In-memory caches. LruCache (thread-safe) bounds memory by entry count; TTL is still
     // checked on read so stale entries are never served. Caps a never-revisited key from
     // living for the whole process lifetime.
@@ -35,6 +64,28 @@ object AnimeRepository {
     @Volatile private var scheduleCache: Pair<Long, Map<String, List<ScheduleItem>>>? = null
 
     private lateinit var client: OkHttpClient
+
+    /**
+     * Para todo lo que lleva a una URL de vídeo: páginas de embed y la comprobación de la playlist
+     * de Zilla. **Sin la caché de disco**, que en el cliente principal fuerza `max-age=300` sobre
+     * toda respuesta buena: seguiría afirmando que un Zilla recién caído funciona, y serviría
+     * durante cinco minutos páginas con URLs de un solo uso (YourUpload) o atadas a la IP y al ASN
+     * (Voe) aunque ya no valgan. La reutilización ya la da [streamCache], en memoria. Cada llamada
+     * lleva su propio tope ([execute]).
+     */
+    private val streamClient: OkHttpClient by lazy { client.newBuilder().cache(null).build() }
+
+    /** Un fallo de un proveedor: cuándo fue y cuántos lleva seguidos. Ver [markSourceFailed]. */
+    private data class SourceFailure(val at: Long, val streak: Int) {
+        val ttl: Long get() =
+            (FAILED_SOURCE_BASE_TTL shl (streak - 1).coerceIn(0, 10)).coerceAtMost(FAILED_SOURCE_MAX_TTL)
+    }
+
+    /**
+     * host del embed → su último fallo. Ver [markSourceFailed]. Con `synchronized` y no un
+     * `ConcurrentHashMap.compute`, que es de API 24 (minSdk 21).
+     */
+    private val failedSources = HashMap<String, SourceFailure>()
 
     /** Must be called once from Application.onCreate() before any network call. */
     fun init(context: Context) {
@@ -205,7 +256,7 @@ object AnimeRepository {
         playable
     }
 
-    // ── Extracción de stream (MP4Upload y similares) ──────────────────────────
+    // ── Extracción de stream (Zilla, Voe, MP4Upload y similares) ──────────────
 
     suspend fun extractStreamUrl(embedUrl: String): String? = withContext(Dispatchers.IO) {
         streamCache.get(embedUrl)?.let { (ts, url) ->
@@ -216,6 +267,9 @@ object AnimeRepository {
             when {
                 // Zilla "HLS": el .m3u8 es un transform directo del embed (sin JS ni token).
                 "zilla-networks.com" in embedUrl -> resolveZilla(embedUrl)
+                // ⚠️ Voe NUNCA cae al scraper genérico: su página real trae un mp4 señuelo que
+                // `directUrlFrom` se tragaría (ver VoeParser).
+                VoeParser.handles(embedUrl) -> resolveVoe(embedUrl)
                 // El resto: scrapear la URL directa del HTML del embed.
                 else -> scrapeStreamUrl(embedUrl)
             }
@@ -227,22 +281,137 @@ object AnimeRepository {
         resolved
     }
 
-    /** player.zilla-networks.com/play/<id>  →  /m3u8/<id>  (id de 32 chars). */
-    private fun resolveZilla(embedUrl: String): String? = StreamUrlParser.zillaM3u8(embedUrl)
+    /**
+     * player.zilla-networks.com/play/<id>  →  /m3u8/<id>  (id de 32 chars), y solo si esa playlist
+     * responde de verdad.
+     *
+     * ⚠️ Sin la comprobación, esto no fallaba NUNCA: es un cambio de texto en la URL. Con Zilla
+     * caído (desde ~2026-09-21 su origen no contesta y Cloudflare da 522 a los 20 s) el reproductor
+     * recibía una URL "buena", media3 se quedaba en BUFFERING cortando cada intento a los 8 s, y
+     * solo el watchdog lo mataba a los 25 s — en cada episodio, porque HLS es lo primero de la
+     * lista. Ahora falla aquí, como cualquier otra fuente, y el fallback salta enseguida.
+     */
+    private fun resolveZilla(embedUrl: String): String? {
+        val playlist = StreamUrlParser.zillaM3u8(embedUrl) ?: return null
+        return playlist.takeIf { playlistAnswers(it, StreamUrlParser.refererOf(embedUrl) ?: BASE_URL) }
+    }
+
+    /** GET corto a la playlist con las mismas cabeceras que mandará el reproductor. */
+    private fun playlistAnswers(url: String, referer: String): Boolean {
+        val req = Request.Builder().url(url)
+            .header("Referer", referer)
+            // El interceptor global pone `application/json,*/*`; media3 no lo manda.
+            .header("Accept", "*/*")
+            .header("Sec-Fetch-Site", StreamUrlParser.secFetchSite(url, referer))
+            .header("Sec-Fetch-Mode", "cors")
+            .header("Sec-Fetch-Dest", "empty")
+            .build()
+        return execute(req, deadlineAt = System.currentTimeMillis() + PLAYLIST_PROBE_TIMEOUT_MS) { res ->
+            res.code == 200 && StreamUrlParser.looksLikePlaylist(res.body?.string().orEmpty())
+        }
+    }
+
+    /**
+     * Voe: el embed es un stub que redirige por JavaScript a un dominio rotatorio, y la URL del
+     * vídeo va ofuscada dentro de la página real. Todo el parseo vive en [VoeParser].
+     *
+     * La URL que sale va atada a la IP y al ASN de quien la pidió y caduca a las 4 h (`e=14400`),
+     * así que los 10 min de [STREAM_TTL] quedan muy por dentro.
+     */
+    private fun resolveVoe(embedUrl: String): String? {
+        val deadlineAt = System.currentTimeMillis() + RESOLVE_BUDGET_MS   // para TODOS los saltos
+        var url = embedUrl
+        var referer = BASE_URL
+        repeat(VOE_MAX_HOPS) {
+            val html = fetchHtml(url, referer, deadlineAt)
+            VoeParser.streamFrom(html)?.let { return it }
+            val next = VoeParser.redirectFrom(html) ?: return null
+            referer = url
+            url = next
+        }
+        return null
+    }
 
     /**
      * Descarga el HTML del embed y busca en él un .m3u8/.mp4 directo. El parseo vive en
      * [StreamUrlParser] (sin red ni Android) para poder testearlo con fixtures capturados:
      * los regex son la pieza que más veces se ha roto.
      */
-    private fun scrapeStreamUrl(embedUrl: String): String? {
-        val req = Request.Builder().url(embedUrl)
+    private fun scrapeStreamUrl(embedUrl: String): String? =
+        StreamUrlParser.streamFromEmbedPage(
+            fetchHtml(embedUrl, BASE_URL, System.currentTimeMillis() + RESOLVE_BUDGET_MS)
+        )
+
+    private fun fetchHtml(url: String, referer: String, deadlineAt: Long): String {
+        val req = Request.Builder().url(url)
             .header("User-Agent", USER_AGENT)
-            .header("Referer", BASE_URL)
+            .header("Referer", referer)
             .build()
-        val html = client.newCall(req).execute().use { it.body?.string() ?: "" }
-        return StreamUrlParser.directUrlFrom(html)
+        return execute(req, deadlineAt) { it.body?.string() ?: "" }
     }
+
+    /**
+     * Ejecuta [req] en [streamClient] con un tope TOTAL que acaba en [deadlineAt]. Es el
+     * `callTimeout` de OkHttp, que sí corta una llamada bloqueada (un `withTimeout` de corrutinas
+     * no: el hilo de IO seguiría esperando al socket).
+     */
+    private fun <T> execute(req: Request, deadlineAt: Long, read: (okhttp3.Response) -> T): T {
+        val left = deadlineAt - System.currentTimeMillis()
+        if (left <= 0) throw InterruptedIOException("sin tiempo para ${req.url.host}")
+        val call = streamClient.newCall(req)
+        call.timeout().timeout(left, TimeUnit.MILLISECONDS)
+        return call.execute().use(read)
+    }
+
+    // ── Fuentes que han fallado hace poco ────────────────────────────────────
+
+    /**
+     * Apunta que el proveedor de [embedUrl] acaba de fallar (no resolvió, se quedó callado o media3
+     * dio error). Se guarda por HOST y no por embed: cuando Zilla se cae, se caen todos sus
+     * episodios y las dos pistas a la vez.
+     *
+     * Solo sirve para ORDENAR: el reproductor deja esas fuentes para el final al elegir con qué
+     * arrancar y a qué saltar, así que el episodio siguiente no vuelve a esperar a un servidor que
+     * lleva minutos sin contestar. No esconde nada — siguen en el panel y en la cadena de fallback
+     * —, no toca la preferencia guardada de la serie y se olvida sola.
+     *
+     * ⚠️ **Cuánto se olvida crece con cada fallo seguido** (10 min, 20, 40… hasta 2 h) y vuelve a
+     * cero en cuanto reproduce ([markSourceWorking]). Con un plazo fijo de 10 min, más corto que un
+     * episodio, en un maratón la marca ya había caducado al llegar el siguiente y cada episodio
+     * volvía a esperar 8 s a un Zilla muerto. Un plazo fijo largo sería peor en el otro sentido: un
+     * corte de red de un momento dejaría a Voe al final de la cola durante horas.
+     *
+     * Además olvida la URL ya resuelta de ESE embed: si no, [streamCache] la seguiría entregando
+     * 10 min más (sin volver a comprobar la playlist de Zilla, o con la URL de Voe atada a una IP que
+     * ya no es la nuestra) y "Reintentar" no podría salir de ahí.
+     */
+    fun markSourceFailed(embedUrl: String) {
+        streamCache.remove(embedUrl)
+        val host = hostOf(embedUrl) ?: return
+        val now = System.currentTimeMillis()
+        synchronized(failedSources) {
+            failedSources[host] = SourceFailure(now, (failedSources[host]?.streak ?: 0) + 1)
+        }
+    }
+
+    /** El proveedor de [embedUrl] acaba de reproducir: deja de contar como caído. */
+    fun markSourceWorking(embedUrl: String) {
+        val host = hostOf(embedUrl) ?: return
+        synchronized(failedSources) { failedSources.remove(host) }
+    }
+
+    /**
+     * Si el proveedor de [embedUrl] ha fallado dentro de su plazo. Al caducar NO se borra la
+     * entrada: la racha tiene que sobrevivir para que el siguiente fallo pese el doble.
+     */
+    fun recentlyFailed(embedUrl: String): Boolean {
+        val host = hostOf(embedUrl) ?: return false
+        val f = synchronized(failedSources) { failedSources[host] } ?: return false
+        return System.currentTimeMillis() - f.at < f.ttl
+    }
+
+    private fun hostOf(url: String): String? =
+        runCatching { URI(url).host?.lowercase() }.getOrNull()
 
     // ── Horario ───────────────────────────────────────────────────────────────
 

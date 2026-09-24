@@ -129,6 +129,14 @@ class PlayerActivity : FragmentActivity() {
     private var embedList: List<EmbedServer> = emptyList()
 
     private var currentStreamUrl: String? = null
+
+    /**
+     * El embed al que pertenece [currentStreamUrl]. Es lo que dice qué está sonando: `selectedEmbed`
+     * puede ir por delante (un cambio del panel que aún resuelve), y un player recreado sobre la URL
+     * vieja no puede heredar ese nombre. Se fija y se olvida SIEMPRE junto con la URL
+     * ([forgetStream]).
+     */
+    private var currentStreamEmbed: EmbedServer? = null
     private var currentReferer: String = AnimeRepository.BASE_URL
     private var resumePositionMs: Long = 0L
     private var resumePlayWhenReady: Boolean = true
@@ -175,6 +183,30 @@ class PlayerActivity : FragmentActivity() {
     /** True while re-resolving a server for the episode that is already playing: resume in place
      *  on the new server, skipping the "¿Continuar viendo?" prompt. */
     private var pendingServerSwitch = false
+
+    /**
+     * Fuente elegida en el panel que todavía no ha demostrado reproducir. Se guarda en
+     * `series_prefs` cuando llega a READY ([onSourceWorking]), no al pulsarla: guardarla al pulsar
+     * fijaba para toda la serie un servidor que quizá ni contestaba — un solo toque en HLS con
+     * Zilla caído y cada episodio de esa serie arrancaba esperando a HLS.
+     */
+    private var pendingPrefEmbed: EmbedServer? = null
+
+    /**
+     * Última fuente que llegó a READY en este episodio. Si el usuario cambia a otra desde el panel y
+     * esa no arranca, el fallback vuelve AQUÍ antes que a una desconocida: está en `triedEmbeds`, así
+     * que sin esto la cadena la saltaba y podía acabar en "Ninguna fuente responde" con una fuente
+     * que funcionaba hacía un momento.
+     */
+    private var lastWorkingEmbed: EmbedServer? = null
+
+    /**
+     * Rótulo del overlay mientras se resuelve, cuando no es el genérico ("HLS no responde.
+     * Probando Voe…"). Hace falta guardarlo porque `StreamState.Resolving` vuelve a pintar el
+     * overlay justo después de `onServerSelected`: escrito solo en `statusText`, el aviso duraba
+     * un frame y el usuario solo veía cambiar el nombre del servidor.
+     */
+    private var loadingNote: String? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -410,9 +442,11 @@ class PlayerActivity : FragmentActivity() {
         lifecycleScope.launch {
             vm.stream.collectLatest { state ->
                 when (state) {
-                    is StreamState.Resolving -> showLoading("Cargando vídeo desde ${labelOf(state.embed)}…")
-                    is StreamState.Ready -> playStream(state.url, state.referer)
+                    is StreamState.Resolving ->
+                        showLoading(loadingNote ?: "Cargando vídeo desde ${labelOf(state.embed)}…")
+                    is StreamState.Ready -> playStream(state.url, state.referer, state.embed)
                     is StreamState.Failed -> {
+                        noteSourceFailed(state.embed)
                         if (player != null) {
                             // Mid-playback switch failed: the old server keeps playing — don't
                             // cover it with the fullscreen error, just restore the selection.
@@ -437,11 +471,9 @@ class PlayerActivity : FragmentActivity() {
                             // posición hay que conservarla.
                             val keepPosition = pendingServerSwitch
                             pendingServerSwitch = false
-                            currentStreamUrl = null
+                            forgetStream()
                             playingEmbed = null
-                            val next = nextUntriedSource(state.embed)!!
-                            statusText.text = getString(R.string.source_falling_back, labelOf(next))
-                            onServerSelected(next, switchInPlace = keepPosition)
+                            fallBackFrom(state.embed, switchInPlace = keepPosition)
                         } else {
                             // Sin player, pero `currentStreamUrl` puede seguir apuntando al stream
                             // ANTERIOR: los colectores no son lifecycle-aware, así que un cambio de
@@ -452,7 +484,7 @@ class PlayerActivity : FragmentActivity() {
                             // identidad falsa se propaga a `preferredServer`/`preferredAudio` — el
                             // episodio siguiente arrancaría doblado con el usuario oyendo subtitulado.
                             pendingServerSwitch = false
-                            currentStreamUrl = null
+                            forgetStream()
                             playingEmbed = null
                             showError("No se pudo cargar ${labelOf(state.embed)}. Elige otro servidor.")
                             openServerPanel()
@@ -472,10 +504,17 @@ class PlayerActivity : FragmentActivity() {
      */
     private fun pickDefaultEmbed(embeds: List<EmbedServer>): EmbedServer {
         val byName = { e: EmbedServer -> preferredServer?.equals(e.server, ignoreCase = true) == true }
-        return embeds.firstOrNull { byName(it) && it.audio == preferredAudio }   // servidor + pista
-            ?: embeds.firstOrNull { it.audio == preferredAudio }                 // al menos la pista
-            ?: embeds.firstOrNull { byName(it) }                                 // al menos el servidor
-            ?: embeds.first()
+        // ⚠️ La pista se decide ANTES de mirar qué ha fallado: la preferida si el episodio la trae y,
+        // si no, la primera (SUB). Ordenando todo junto, sin preferencia de pista y con los hosts
+        // de SUB marcados como caídos, el primer "vivo" podía ser uno de DOBLADO: el episodio
+        // arrancaba doblado sin que nadie lo pidiera.
+        val track = preferredAudio?.takeIf { a -> embeds.any { it.audio == a } } ?: embeds.first().audio
+        // Dentro de la pista, lo que ha fallado hace poco va al final (ver
+        // AnimeRepository.markSourceFailed): con un proveedor caído, cada episodio empezaba
+        // esperando a que volviera a fallar. Solo reordena: si fallaron todas, se usa igual una.
+        val failed = embeds.filter { AnimeRepository.recentlyFailed(it.url) }.toSet()
+        val inTrack = embeds.filter { it.audio == track }.sortedBy { it in failed }   // estable
+        return inTrack.firstOrNull { byName(it) && it !in failed } ?: inTrack.first()
     }
 
     /** "HLS", o "HLS (Doblado)" cuando el episodio ofrece las dos pistas y hay que distinguir. */
@@ -494,41 +533,91 @@ class PlayerActivity : FragmentActivity() {
      *   permanente de la serie. Un episodio recién emitido que el sitio publica solo en SUB haría que
      *   la serie que el usuario veía DOBLADA se abriera en subtitulado a partir de entonces, y un
      *   stall de 25 s en YourUpload (el único H.264) la dejaría fijada en HLS.
+     *   Y ni siquiera eso se guarda al pulsar: se guarda cuando llega a READY ([pendingPrefEmbed]).
      * @param switchInPlace si el stream nuevo debe reanudar donde iba el anterior en vez de volver a
      *   preguntar "¿Continuar viendo?". ⚠️ Lo decide **quien llama**: el fallback libera el player
      *   ANTES de llegar aquí, así que `player != null` ya vale false y calcularlo aquí perdía la
      *   posición (el usuario veía el episodio empezar de cero, o un modal a mitad de reproducción).
+     * @param note rótulo del overlay en lugar del genérico "Cargando vídeo desde X…".
      */
     private fun onServerSelected(
         embed: EmbedServer,
         fromUser: Boolean = false,
-        switchInPlace: Boolean = player != null
+        switchInPlace: Boolean = player != null,
+        note: String? = null
     ) {
         selectedEmbed = embed
-        if (fromUser) {
-            // Fire-and-forget en appScope: debe sobrevivir a que el usuario salga del reproductor
-            // justo después de elegir.
-            val s = slug
-            val audio = embed.audio.name
-            val server = embed.server
-            val repo = local
-            AnimeApp.appScope.launch { repo.rememberPrefs(s, audio, server) }
-        }
+        if (fromUser) pendingPrefEmbed = embed
         serverAdapter.setSelected(embed)
         closeServerPanel()
         pendingServerSwitch = switchInPlace
         triedEmbeds += embed
-        showLoading("Cargando vídeo desde ${labelOf(embed)}…")
+        loadingNote = note
+        showLoading(note ?: "Cargando vídeo desde ${labelOf(embed)}…")
         vm.resolveStream(embed)
+    }
+
+    /**
+     * La fuente que se está reproduciendo acaba de llegar a READY: deja de contar como caída, pasa
+     * a ser a la que volver si la siguiente no arranca y, si es la que el usuario eligió en el
+     * panel, se guarda como preferencia de la serie.
+     */
+    private fun onSourceWorking() {
+        val embed = playingEmbed ?: return
+        lastWorkingEmbed = embed
+        AnimeRepository.markSourceWorking(embed.url)
+        val picked = pendingPrefEmbed ?: return
+        if (picked != embed) {
+            // ⚠️ Este READY puede ser del stream VIEJO mientras la elección todavía resuelve: sale
+            // de un rebuffer, o el usuario ha hecho seek (media3 pasa READY→BUFFERING→READY). Eso no
+            // dice nada de la elección, así que se conserva mientras siga siendo `selectedEmbed`.
+            // Si ya no lo es, la sustituyó el fallback: no es una preferencia del usuario. (Si
+            // falló, ya la limpió `noteSourceFailed`.)
+            if (selectedEmbed != picked) pendingPrefEmbed = null
+            return
+        }
+        pendingPrefEmbed = null
+        // Fire-and-forget en appScope: debe sobrevivir a que el usuario salga del reproductor
+        // justo después.
+        val s = slug
+        val audio = embed.audio.name
+        val server = embed.server
+        val repo = local
+        AnimeApp.appScope.launch { repo.rememberPrefs(s, audio, server) }
+    }
+
+    /** Una fuente no ha resuelto, se ha quedado callada o media3 ha dado error. */
+    private fun noteSourceFailed(embed: EmbedServer) {
+        AnimeRepository.markSourceFailed(embed.url)
+        if (pendingPrefEmbed == embed) pendingPrefEmbed = null
+        // La que acaba de fallar ya no es "la que funcionaba": volver a ella costaría otros 25 s
+        // de watchdog antes de probar las que quedan sin probar.
+        if (lastWorkingEmbed == embed) lastWorkingEmbed = null
+    }
+
+    /**
+     * Pasa sola a la siguiente fuente de la misma pista, diciendo cuál ha fallado.
+     * @return false si no queda ninguna; quien llama enseña entonces el error.
+     */
+    private fun fallBackFrom(failed: EmbedServer, switchInPlace: Boolean): Boolean {
+        val next = nextUntriedSource(failed) ?: return false
+        if (next == lastWorkingEmbed) lastWorkingEmbed = null   // se vuelve a ella UNA vez
+        onServerSelected(
+            next,
+            switchInPlace = switchInPlace,
+            note = getString(R.string.source_falling_back, labelOf(failed), labelOf(next))
+        )
+        return true
     }
 
     // ── ExoPlayer ─────────────────────────────────────────────────────────────
 
-    private fun playStream(url: String, referer: String) {
+    private fun playStream(url: String, referer: String, embed: EmbedServer) {
         val switching = pendingServerSwitch
         pendingServerSwitch = false
         releasePlayer()                 // saves progress and sets resumePositionMs = last position
         currentStreamUrl = url
+        currentStreamEmbed = embed
         currentReferer = referer
         resumePlayWhenReady = true
 
@@ -618,7 +707,10 @@ class PlayerActivity : FragmentActivity() {
                         if (loadingOverlay.visibility != View.VISIBLE) {
                             bufferingSpinner.visibility = View.VISIBLE
                         }
-                    Player.STATE_READY -> { hideLoading(); bufferingSpinner.visibility = View.GONE }
+                    Player.STATE_READY -> {
+                        hideLoading(); bufferingSpinner.visibility = View.GONE
+                        onSourceWorking()
+                    }
                     Player.STATE_ENDED -> {
                         bufferingSpinner.visibility = View.GONE
                         clearProgress(); autoMarkWatched()
@@ -645,11 +737,21 @@ class PlayerActivity : FragmentActivity() {
         exo.prepare()
 
         player = exo
-        playingEmbed = selectedEmbed
+        // ⚠️ El embed de la URL, no `selectedEmbed`: en API 21-23 el player se libera en onPause y
+        // se recrea en onResume, y si entre medias el usuario había elegido otra fuente en el panel
+        // (aún resolviendo), el stream VIEJO quedaba etiquetado con el nombre de la nueva — y al
+        // llegar a READY se guardaba como preferencia una fuente que no había sonado.
+        playingEmbed = currentStreamEmbed ?: selectedEmbed
         playerView.player = exo
         startProgressSaver()
         startEndMonitor()
         startStallWatchdog()
+    }
+
+    /** Olvida el stream actual: la URL y el embed al que pertenece van siempre juntos. */
+    private fun forgetStream() {
+        currentStreamUrl = null
+        currentStreamEmbed = null
     }
 
     private fun releasePlayer() {
@@ -681,14 +783,10 @@ class PlayerActivity : FragmentActivity() {
         val failed = playingEmbed ?: selectedEmbed
         val wasPlaying = player != null
         releasePlayer()
-        currentStreamUrl = null
+        forgetStream()
         vm.clearStream()
-        val next = failed?.let { nextUntriedSource(it) }
-        if (next != null) {
-            statusText.text = getString(R.string.source_falling_back, labelOf(next))
-            onServerSelected(next, switchInPlace = wasPlaying)
-            return
-        }
+        failed?.let { noteSourceFailed(it) }
+        if (failed != null && fallBackFrom(failed, switchInPlace = wasPlaying)) return
         showError("Error de reproducción. Prueba otro servidor.")
         openServerPanel()
     }
@@ -731,9 +829,17 @@ class PlayerActivity : FragmentActivity() {
      *
      * De la misma pista a propósito: caer del doblaje al subtitulado por un CDN caído cambiaría el
      * idioma sin avisar, que es peor que el error. Si esa pista se agota, se rinde y pregunta.
+     *
+     * Antes que ninguna desconocida, la que estaba reproduciendo ([lastWorkingEmbed]); y entre las
+     * no probadas, las que han fallado hace poco van al final.
      */
-    private fun nextUntriedSource(failed: EmbedServer): EmbedServer? =
-        embedList.firstOrNull { it.audio == failed.audio && it !in triedEmbeds }
+    private fun nextUntriedSource(failed: EmbedServer): EmbedServer? {
+        lastWorkingEmbed?.takeIf { it != failed && it.audio == failed.audio }?.let { return it }
+        return embedList
+            .filter { it.audio == failed.audio && it !in triedEmbeds }
+            .sortedBy { AnimeRepository.recentlyFailed(it.url) }   // estable: si no, orden del sitio
+            .firstOrNull()
+    }
 
     private fun onStallTimeout() {
         val stalled = playingEmbed ?: selectedEmbed
@@ -741,16 +847,12 @@ class PlayerActivity : FragmentActivity() {
         // ⚠️ Antes de releasePlayer(): después ya no se puede saber que había algo reproduciéndose.
         val wasPlaying = player != null
         releasePlayer()
-        currentStreamUrl = null
+        forgetStream()
         vm.clearStream()
+        stalled?.let { noteSourceFailed(it) }
         // Un CDN que acepta la conexión y no manda un byte es EL caso típico de "prueba otra fuente":
         // el usuario no puede hacer nada con esa información, así que se intenta solo.
-        val next = stalled?.let { nextUntriedSource(it) }
-        if (next != null) {
-            statusText.text = getString(R.string.source_falling_back, labelOf(next))
-            onServerSelected(next, switchInPlace = wasPlaying)
-            return
-        }
+        if (stalled != null && fallBackFrom(stalled, switchInPlace = wasPlaying)) return
         showError(
             if (label != null) getString(R.string.source_all_failed, label)
             else getString(R.string.source_none_works)
@@ -1218,7 +1320,7 @@ class PlayerActivity : FragmentActivity() {
     /** Reintenta la misma fuente: el fallo más común es un CDN que no responde en ese momento. */
     private fun retryCurrentSource() {
         errorActions.visibility = View.GONE
-        currentStreamUrl = null
+        forgetStream()
         vm.clearStream()
         val embed = selectedEmbed ?: playingEmbed ?: embedList.firstOrNull()
         if (embed == null) {

@@ -3,13 +3,13 @@ package com.animeav1.viewmodel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.animeav1.data.AnimeRepository
+import com.animeav1.data.StreamUrlParser
 import com.animeav1.data.model.EmbedServer
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
-import java.net.URI
 
 class PlayerViewModel : ViewModel() {
 
@@ -107,6 +107,5 @@ class PlayerViewModel : ViewModel() {
     }
 
     private fun refererOf(embedUrl: String): String =
-        runCatching { URI(embedUrl).let { "${it.scheme}://${it.host}/" } }
-            .getOrNull() ?: AnimeRepository.BASE_URL
+        StreamUrlParser.refererOf(embedUrl) ?: AnimeRepository.BASE_URL
 }

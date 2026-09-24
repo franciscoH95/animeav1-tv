@@ -9,8 +9,9 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * Se ejecuta contra una captura real de `animeav1.com/media/dandadan/1/__data.json`, un episodio
- * que trae las DOS pistas y, en SUB, la lista larga de servidores (incluidos los cifrados).
+ * Se ejecuta contra una captura real de `animeav1.com/media/dandadan/1/__data.json` (2026-09-24),
+ * un episodio que trae las DOS pistas y, en SUB, la lista larga de servidores (incluidos los
+ * cifrados). Ya trae los que el sitio empezó a ofrecer en septiembre de 2026: Voe y Byse.
  */
 class EmbedParserTest {
 
@@ -36,18 +37,20 @@ class EmbedParserTest {
     }
 
     /**
-     * Solo deben sobrevivir los servidores de los que la app sabe sacar una URL reproducible.
-     * El fixture trae los 10 que ofrece el sitio; se comprobó contra el sitio real que únicamente
-     * HLS, MP4Upload y YourUpload resuelven (ver el KDoc de [EmbedParser.UNSUPPORTED_SERVERS]).
+     * Solo deben sobrevivir los servidores de los que la app sabe sacar una URL reproducible, en el
+     * orden del sitio. El fixture trae 10 en SUB y 7 en DUB; se comprobó contra el sitio real que
+     * únicamente HLS, Voe, YourUpload y MP4Upload resuelven (ver el KDoc de
+     * [EmbedParser.UNSUPPORTED_SERVERS]). El DUB trae DOS entradas Voe con URLs distintas y llegan
+     * las dos, aunque las dos resuelven al MISMO fichero (`1_1_DUB.mp4`, mismo stream en el CDN).
      */
     @Test
     fun `solo deja pasar los servidores de los que se puede extraer el video`() {
         assertEquals(
-            listOf("HLS", "MP4Upload", "YourUpload"),
+            listOf("HLS", "Voe", "YourUpload", "MP4Upload"),
             parsed.filter { it.audio == AudioTrack.SUB }.map { it.server }
         )
         assertEquals(
-            listOf("HLS", "MP4Upload"),
+            listOf("HLS", "Voe", "Voe", "MP4Upload"),
             parsed.filter { it.audio == AudioTrack.DUB }.map { it.server }
         )
     }
@@ -62,7 +65,8 @@ class EmbedParserTest {
             "DoodStream" to "https://dooodster.com/e/rhvyfowrkup8",
             "Netu" to "https://hqq.ac/e/dnNMcFlnRGtP",
             "VidHide" to "https://ryderjet.com/embed/e5kvdxcscdyl",
-            "StreamTape" to "https://streamtape.com/e/xZldR2Pl3bCkGDG/"
+            "StreamTape" to "https://streamtape.com/e/xZldR2Pl3bCkGDG/",
+            "Byse" to "https://byselapuix.com/e/uftud7u67ay3"        // prueba de trabajo + AES
         )
         for ((server, url) in descartados) {
             assertTrue(
@@ -77,7 +81,8 @@ class EmbedParserTest {
         val soportados = listOf(
             "HLS" to "https://player.zilla-networks.com/play/aced41de84f231b5095a124e19c63f9c",
             "MP4Upload" to "https://www.mp4upload.com/embed-nzl6vpv2j8fv.html",
-            "YourUpload" to "https://www.yourupload.com/embed/H4dQly801Rou"
+            "YourUpload" to "https://www.yourupload.com/embed/H4dQly801Rou",
+            "Voe" to "https://voe.sx/e/bnpyhzir3pee"
         )
         for ((server, url) in soportados) {
             assertFalse(
@@ -95,6 +100,13 @@ class EmbedParserTest {
     fun `no filtra por subcadena accidental en la url`() {
         assertFalse(EmbedParser.isUnsupported(EmbedServer("Otro", "https://vidcache.net:8161/a1/video.mp4")))
         assertFalse(EmbedParser.isUnsupported(EmbedServer("Omega", "https://ejemplo.com/v.mp4")))
+    }
+
+    /** Si el sitio renombra la etiqueta, el host sigue delatando al proveedor. */
+    @Test
+    fun `filtra por host aunque cambie la etiqueta`() {
+        assertTrue(EmbedParser.isUnsupported(EmbedServer("Byse2", "https://byselapuix.com/e/x")))
+        assertTrue(EmbedParser.isUnsupported(EmbedServer("VH", "https://ryderjet.com/embed/x")))
     }
 
     /** Un servidor NUEVO que el sitio empiece a ofrecer debe aparecer, no esconderse por defecto. */
