@@ -952,12 +952,14 @@ mal, que es lo que el uuid existe para evitar.
   publicando la migración. Borrar en silencio convertía un despiste en pérdida definitiva.
 - **`android:hasFragileUserData="true"`**: al desinstalar desde la UI (API 29+), el sistema ofrece
   conservar los datos.
-- ⚠️ **La firma es lo que más datos puede costar, y sigue sin resolver.** No hay `keystore.properties`,
-  así que release se firma con el `~/.android/debug.keystore` de la máquina. El día que se genere una
-  clave de release de verdad, la firma cambia y **todo usuario tendrá que desinstalar** para
-  actualizar → adiós listas e historial. Perder ese keystore da el mismo problema para siempre. Es
-  también la causa del gotcha `INSTALL_FAILED_UPDATE_INCOMPATIBLE` de arriba. Generar la clave **antes**
-  de que haya usuarios es gratis; después cuesta los datos de todos.
+- ⚠️ **La firma es lo que más datos puede costar.** Los releases van firmados con la clave de
+  release `~/animeav1-release.jks` (alias `animeav1`, certificado SHA-256 `2fab1c96…e466`, fuera del
+  repo; `keystore.properties` la apunta y está en `.gitignore`). **Perder ese fichero es perder las
+  actualizaciones para siempre**: un APK firmado con otra clave no se instala encima y cada usuario
+  tendría que desinstalar → adiós listas e historial. Tiene que haber copia fuera de este equipo. Las
+  builds de **debug** van con el `~/.android/debug.keystore` de la máquina, que es otra clave: por
+  eso un debug no se instala encima de un release ni al revés (el gotcha
+  `INSTALL_FAILED_UPDATE_INCOMPATIBLE` de arriba).
 
 ---
 
@@ -1505,20 +1507,23 @@ La app se actualiza sola: mira un `update.json` publicado junto al APK, y si hay
 ofrece, la descarga, **comprueba su SHA-256** e instala. Verificado de punta a punta en el emulador
 (8/1.4.1 → 9/1.5.0, con perfiles, listas y vistos intactos).
 
-⚠️ **Falta lo único que no puede hacer el código: la clave de firma de release.** Hoy no hay
-`keystore.properties`, así que `assembleRelease` sale **sin firmar** y cada build de debug lleva la
-clave de la máquina que la hizo. Sin una clave ESTABLE no hay OTA posible: el APK nuevo no se puede
-instalar encima (`INSTALL_FAILED_UPDATE_INCOMPATIBLE`) y la única salida es desinstalar, que es
-justo lo que el OTA viene a evitar. Y el paso de "firmado con debug" a "firmado de verdad" cuesta
-UNA desinstalación —conviene exportar antes una copia desde Ajustes del perfil → Copia de
-seguridad—. Generar la clave antes de que haya usuarios es gratis; después cuesta los datos de todos.
+**Publicar una versión: `tools/release.sh -n "Novedades"`** (repo público
+`franciscoH95/animeav1-tv`, releases desde la v1.4.2). Antes, subir `versionCode`/`versionName` en
+`app/build.gradle.kts` (commit `chore: versión X (versionCode N)`) y dejar el árbol limpio y
+empujado: el script compila el release FIRMADO, comprueba la firma y que el APK no lleve la URL de
+ejemplo, calcula el sha256, escribe el `update.json`, crea y empuja el tag `vX` y publica el release
+con `animeav1.apk` + `update.json`. Las notas son las que ve el usuario en la TV: en castellano
+llano, qué cambia para él, no los commits.
+⚠️ Antes de publicar conviene comparar el certificado con el del release anterior
+(`apksigner verify --print-certs` sobre los dos APK): si no coincide, ninguna TV podrá actualizar y
+el daño ya estará publicado. Con la clave de siempre (ver "No perder los datos" §3) sale `2fab1c96…e466`.
 
 **De dónde se lee.** `BuildConfig.UPDATE_MANIFEST_URL`, que `app/build.gradle.kts` compone con la
 propiedad `githubRepo` de `gradle.properties`:
 `https://github.com/<repo>/releases/latest/download/update.json`. ⚠️ Esa URL **no cambia al publicar
 una versión nueva**: GitHub siempre resuelve `latest` al release más reciente, así que la app no
-necesita saber qué versión existe para preguntar por ella. Mientras `githubRepo` siga sin rellenar,
-la URL lleva `TU-USUARIO` y `UpdateChecker` no comprueba nada.
+necesita saber qué versión existe para preguntar por ella. Sin `githubRepo` la URL lleva
+`TU-USUARIO` y `UpdateChecker` no comprueba nada (el script se niega a publicar un APK así).
 
 **El manifiesto** es pequeño y aditivo (`versionCode`, `versionName`, `apkUrl`, `sha256`,
 `sizeBytes`, `notes`, `minSdk`). ⚠️ `UpdateManifest.parse` descarta el fichero ENTERO si algo no
@@ -1591,9 +1596,6 @@ acababa de actualizar se quedaba sin saber qué había cambiado.
   los permisos de almacenamiento y de instalación depende de esa cifra, y es lo primero que hay que
   saber cuando algo no aparece donde debería.
 
-**Lo que falta para publicar de verdad:** crear el repo (hoy el proyecto no tiene ni un commit),
-rellenar `githubRepo`, y un script que suba `versionCode`, compile el release firmado, calcule el
-sha256 y escriba el `update.json` como asset del release junto al APK.
 
 ---
 
@@ -1623,11 +1625,9 @@ sha256 y escriba el `update.json` como asset del release junto al APK.
   infinito porque los colectores hacen `err ?: return@collectLatest`.
 - **Parsing JSON manual** con `org.json` (no kotlinx.serialization).
 - **kapt (no KSP):** la migración a KSP requiere bajar el plugin gradle (no está cacheado offline).
-- **Release sin R8 ni firma propia:** `isMinifyEnabled=false`; hay `signingConfigs.release` **opcional**
-  que se activa si existe `keystore.properties` en la raíz. ⚠️ Si NO existe, release no queda firmado
-  con debug como decía aquí: sale **sin firmar** (`app-release-unsigned.apk`, comprobado ejecutando
-  `assembleRelease`), o sea que hoy una build de release **no se puede ni instalar**.
-- `versionCode`/`versionName` en 8 / 1.4.1 — subir en cada publicación.
+- **Release sin R8:** `isMinifyEnabled=false`. La firma sale de `keystore.properties` (en la raíz,
+  fuera de git); ⚠️ sin ese fichero el release sale **sin firmar** (`app-release-unsigned.apk`) y no
+  se puede ni instalar — `tools/release.sh` para antes de publicar algo así.
 - **Cobertura de tests mínima:** solo hay tests JVM de `SvelteKitDecoder`, `StreamUrlParser`, `VoeParser`,
   `EmbedParser`, `BackupCodec`, `AiringSchedule`, `MediaType` y `UpdateManifest`. Nada de Room (haría falta `androidTest` o Robolectric), ni de ViewModels, ni de UI —
   en particular, la selección SUB/DUB de `PlayerActivity` y el agrupado de `ServerAdapter` solo están
