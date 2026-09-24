@@ -32,8 +32,8 @@ android {
         applicationId = "com.animeav1"
         minSdk = 21
         targetSdk = 34
-        versionCode = 18
-        versionName = "1.5.8"
+        versionCode = 19
+        versionName = "1.5.9"
 
         buildConfigField("String", "UPDATE_MANIFEST_URL", "\"$updateManifestUrl\"")
     }
