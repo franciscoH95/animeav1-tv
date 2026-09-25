@@ -1,5 +1,6 @@
 package com.animeav1.ui.player
 
+import com.animeav1.data.ByseParser
 import com.animeav1.data.StreamUrlParser
 import com.animeav1.data.model.EmbedServer
 
@@ -91,14 +92,14 @@ internal object PlaybackPolicy {
 
     fun isSlowStart(startMs: Long): Boolean = startMs > MP4UPLOAD_SLOW_START_MS
 
-    // ── Caudal de MP4Upload ───────────────────────────────────────────────────────────────────
+    // ── Caudal (MP4Upload y Byse) ─────────────────────────────────────────────────────────────
 
     /**
-     * Tiempo de transferencia abierta que se mide antes de juzgar el nodo (ver [ThroughputMeter]).
-     * Al arrancar el cargador lee sin parar —el búfer de 120 s tarda en llenarse—, así que esto mide
-     * el nodo y no lo que le deja leer media3.
+     * Tiempo de transferencia abierta que se mide antes de juzgar la fuente (ver [ThroughputMeter]).
+     * Al arrancar el cargador lee sin parar —el búfer tarda en llenarse—, así que esto mide el
+     * servidor y no lo que le deja leer media3.
      */
-    const val MP4UPLOAD_THROUGHPUT_WINDOW_MS = 5_000L
+    const val THROUGHPUT_WINDOW_MS = 5_000L
 
     /**
      * Cuánto por encima del bitrate MEDIO del fichero tiene que servir el nodo. Es VBR: las escenas
@@ -123,6 +124,14 @@ internal object PlaybackPolicy {
         bytesPerSecond < neededBytesPerSecond(sizeBytes, durationMs)
 
     /**
+     * Lo que pide un HLS de una sola variante a partir del bitrate que media3 le pone a la pista de
+     * vídeo (el `BANDWIDTH` de la playlist; en Byse es la media real del fichero, medido), con el
+     * mismo margen. null si no se sabe: entonces no se juzga.
+     */
+    fun neededForBitrate(bitsPerSecond: Int): Long? =
+        if (bitsPerSecond > 0) (bitsPerSecond / 8.0 * MP4UPLOAD_THROUGHPUT_MARGIN).toLong() else null
+
+    /**
      * Tamaño TOTAL del fichero según las cabeceras de una respuesta: `Content-Range: bytes a-b/N`,
      * o el `Content-Length` si la petición empezaba en 0 (sin `Range`, media3 no lo manda). 0 si no se
      * sabe. Las claves se buscan sin distinguir mayúsculas: `HttpURLConnection` las deja como las
@@ -144,17 +153,22 @@ internal object PlaybackPolicy {
 
     /**
      * Qué va antes a igualdad de fallos recientes (0 primero).
-     * - Con decodificador AV1 Main10 por HARDWARE: MP4Upload primero (1080p); el resto, como venga.
+     * - **Byse, primero en TODOS los aparatos**: 1080p en H.264 High de 8 bits (lo decodifica por
+     *   hardware cualquier tele) a 3,4-4,9 Mbit/s, desde un CDN que sirvió 31-67 Mbit/s. Es lo mejor
+     *   que ofrece el sitio. Si no se resuelve (prueba de trabajo demasiado cara, protocolo cambiado)
+     *   o no llega el caudal, el fallback sigue con los demás.
+     * - Con decodificador AV1 Main10 por HARDWARE: luego MP4Upload (1080p); el resto, como venga.
      * - Sin él: las fuentes AV1 al FINAL. Por software, 1080p de 10 bits va a tirones (o ni hay
      *   decodificador y suena solo el audio), y Voe —H.264 de 8 bits, 720p— se ve bien en cualquier
      *   tele. Eso incluye a Zilla: con él vivo, antes iba el primero en todos los aparatos; y es lo
      *   que evita que huir de un AV1 que no da abasto (`markUnreliable`) acabe en otro AV1.
      */
     fun rank(embed: EmbedServer, av1Hardware: Boolean): Int = when {
-        !isAv1Source(embed) -> 1
-        !av1Hardware -> 2
-        StreamUrlParser.isMp4Upload(embed.url) -> 0
-        else -> 1
+        ByseParser.handles(embed.url) -> 0
+        !isAv1Source(embed) -> 2
+        !av1Hardware -> 3
+        StreamUrlParser.isMp4Upload(embed.url) -> 1
+        else -> 2
     }
 
     /** Primero lo que no ha fallado hace poco; luego [rank]; a igualdad, el orden del sitio. */

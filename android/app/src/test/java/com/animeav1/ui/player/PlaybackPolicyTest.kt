@@ -5,6 +5,7 @@ import com.animeav1.data.model.AudioTrack
 import com.animeav1.data.model.EmbedServer
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -13,6 +14,7 @@ class PlaybackPolicyTest {
     private val hls = EmbedServer("HLS", "https://player.zilla-networks.com/play/6a71c5a6e6fe622dc1ad7e764ccc41ed", AudioTrack.SUB)
     private val voe = EmbedServer("Voe", "https://voe.sx/e/bnpyhzir3pee", AudioTrack.SUB)
     private val mp4u = EmbedServer("MP4Upload", "https://www.mp4upload.com/embed-nzl6vpv2j8fv.html", AudioTrack.SUB)
+    private val byse = EmbedServer("Byse", "https://byselapuix.com/e/uftud7u67ay3", AudioTrack.SUB)
     private val siteOrder = listOf(hls, voe, mp4u)
     private val noFailures: (EmbedServer) -> Long = { 0L }
 
@@ -66,6 +68,28 @@ class PlaybackPolicyTest {
     fun `sin av1 por hardware las fuentes av1 van detras`() {
         val sorted = siteOrder.sortedWith(PlaybackPolicy.order(noFailures, av1Hardware = false))
         assertEquals(listOf(voe, hls, mp4u), sorted)
+    }
+
+    /** Byse (1080p H.264 de 8 bits) va primero con y sin AV1 por hardware; detrás, el orden de siempre. */
+    @Test
+    fun `byse va primero en cualquier aparato`() {
+        val site = listOf(hls, voe, byse, mp4u)   // el orden en que lo lista el sitio
+        assertEquals(listOf(byse, mp4u, hls, voe), site.sortedWith(PlaybackPolicy.order(noFailures, av1Hardware = true)))
+        assertEquals(listOf(byse, voe, hls, mp4u), site.sortedWith(PlaybackPolicy.order(noFailures, av1Hardware = false)))
+    }
+
+    /** Si Byse acaba de fallar (prueba de trabajo demasiado cara, sin caudal), va detrás. */
+    @Test
+    fun `byse que ha fallado hace poco va detras`() {
+        val penalty: (EmbedServer) -> Long = { if (it == byse) 600_000L else 0L }
+        assertEquals(voe, listOf(voe, byse).sortedWith(PlaybackPolicy.order(penalty, av1Hardware = false)).first())
+    }
+
+    /** El `BANDWIDTH` de Byse es la media real del fichero; se le exige 1,5 veces. */
+    @Test
+    fun `lo que pide un hls sale de su bitrate`() {
+        assertEquals(916_582L, PlaybackPolicy.neededForBitrate(4_888_440))
+        assertNull(PlaybackPolicy.neededForBitrate(-1))
     }
 
     @Test

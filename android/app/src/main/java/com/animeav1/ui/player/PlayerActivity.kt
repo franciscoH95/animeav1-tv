@@ -41,6 +41,7 @@ import com.animeav1.AnimeApp
 import com.animeav1.R
 import com.animeav1.data.AnimeImages
 import com.animeav1.data.AnimeRepository
+import com.animeav1.data.ByseParser
 import com.animeav1.data.LocalRepository
 import com.animeav1.data.StreamUrlParser
 import com.animeav1.data.local.AppDatabase
@@ -529,8 +530,8 @@ class PlayerActivity : FragmentActivity() {
                 putExtra("startDate",      seriesStartDate)
                 putExtra("category",       seriesCategory)
                 putExtra("isWatched", watched)
-                // Arrastra servidor Y pista: si venías viendo el doblaje, el episodio siguiente
-                // también empieza doblado.
+                // Arrastra la pista (si venías viendo el doblaje, el episodio siguiente también
+                // empieza doblado) y, si es elección del usuario, también el servidor.
                 val carry = unsavedUserChoice()
                 if (carry != null) {
                     // Una elección del usuario que la tabla aún no tiene: el siguiente episodio la
@@ -540,8 +541,9 @@ class PlayerActivity : FragmentActivity() {
                     putExtra("preferredFromUser", true)
                 } else selectedEmbed?.let {
                     // Lo que está sonando sin ser elección del usuario (el pick por defecto, un
-                    // fallback): si hay preferencia guardada, allí manda ella.
-                    putExtra("preferredServer", it.server)
+                    // fallback): solo viaja la PISTA. ⚠️ El servidor no: tras UN fallback (Byse sin
+                    // caudal un momento) el resto del maratón se quedaba en Voe aunque Byse volviera.
+                    // Esquivar lo que ha fallado es cosa de las marcas de fallo, que caducan y crecen.
                     putExtra("preferredAudio", it.audio.name)
                 }
             }
@@ -741,7 +743,12 @@ class PlayerActivity : FragmentActivity() {
     private fun onSourceWorking() {
         val embed = playingEmbed ?: return
         lastWorkingEmbed = embed
-        AnimeRepository.markSourceWorking(embed.url)
+        // ⚠️ Byse NO: su veredicto de caudal marca este mismo host (byselapuix.com), y un READY
+        // —el primero llega antes que el veredicto, y hay otro tras cada rebuffer o salto— le
+        // borraba la marca y la racha. En una conexión lenta cada episodio volvía a empezar en Byse
+        // para cambiar a Voe a los 5 s. A Byse le quita la marca solo [judgeThroughput].
+        // (MP4Upload no tiene el problema: su veredicto marca el NODO, aN.mp4upload.com.)
+        if (!ByseParser.handles(embed.url)) AnimeRepository.markSourceWorking(embed.url)
         // Solo si ESTE stream es una elección del panel. Un READY del stream viejo mientras la
         // elección resuelve (rebuffer, seek) no la toca, y lo que trajo el fallback no es una
         // preferencia del usuario.
@@ -895,7 +902,9 @@ class PlayerActivity : FragmentActivity() {
         nodeMarkedSlow = false
 
         val httpFactory = DefaultHttpDataSource.Factory()
-            .setUserAgent(AnimeRepository.USER_AGENT)
+            // ⚠️ El MISMO que usó la resolución: la URL del CDN de Byse va atada a la clase de UA
+            // (escritorio / Android) con la que se pidió, y con otra da 404.
+            .setUserAgent(AnimeRepository.userAgentFor(currentStreamEmbed?.url))
             .setAllowCrossProtocolRedirects(true)
             // ⚠️ En Android el handshake TLS lo limita el tiempo de LECTURA, y los nodos de
             // MP4Upload tienen rachas de 8-42 s antes de contestar: con los 8 s de media3 cada
@@ -1153,30 +1162,49 @@ class PlayerActivity : FragmentActivity() {
     }
 
     /**
-     * Veredicto del CAUDAL de un MP4Upload, una vez por stream, tras
-     * [PlaybackPolicy.MP4UPLOAD_THROUGHPUT_WINDOW_MS] de transferencia abierta. Un nodo que contesta
-     * rápido pero sirve menos de lo que el vídeo necesita no se calla nunca —el watchdog no lo ve— y
-     * corta a mitad de episodio: se apunta como lento y, salvo que el usuario lo haya pedido en este
-     * episodio o sea el último recurso, se pasa a la siguiente fuente en el mismo punto. Si sirve
-     * bien y no tardó en arrancar, se le quita la marca: así se nota cuando un nodo se recupera.
+     * Veredicto del CAUDAL, una vez por stream, tras [PlaybackPolicy.THROUGHPUT_WINDOW_MS] de
+     * transferencia abierta, para las dos fuentes que pueden pedir más de lo que llega:
+     * - **MP4Upload**: un nodo que contesta rápido pero sirve menos de lo que el vídeo necesita no se
+     *   calla nunca —el watchdog no lo ve— y corta a mitad de episodio. Lo que pide el fichero sale
+     *   de su tamaño y su duración, y lo que se marca es el NODO.
+     * - **Byse**: 1080p a 3,4-4,9 Mbit/s de media (4 veces Voe) y picos de ~11. En una conexión que
+     *   no da para eso, Voe a 720p se ve mejor que un 1080p que se para. Lo que pide sale del
+     *   `BANDWIDTH` de su playlist (que en Byse es la media real), y se marca el proveedor.
+     * Si no llega: se apunta y, salvo que el usuario lo haya pedido en este episodio o sea el último
+     * recurso, a la siguiente fuente en el mismo punto. Si llega (y no tardó en arrancar), se le quita
+     * la marca: así se nota cuando un nodo se recupera.
      * @return true si se ha cambiado de fuente (el player ya no es este).
      */
     private fun judgeThroughput(exo: ExoPlayer): Boolean {
         if (nodeJudged || player !== exo) return false
         val url = currentStreamUrl ?: return false
-        if (!StreamUrlParser.isMp4Upload(url)) return false
+        val embed = currentStreamEmbed
+        val mp4upload = StreamUrlParser.isMp4Upload(url)
+        if (!mp4upload && (embed == null || !ByseParser.handles(embed.url))) return false
         val now = SystemClock.elapsedRealtime()
         val m = meter
-        if (m.activeMs(now) < PlaybackPolicy.MP4UPLOAD_THROUGHPUT_WINDOW_MS) return false
+        if (m.activeMs(now) < PlaybackPolicy.THROUGHPUT_WINDOW_MS) return false
+        val needed = if (mp4upload) {
+            PlaybackPolicy.neededBytesPerSecond(m.fileBytes, exo.duration.takeIf { it != C.TIME_UNSET } ?: 0L)
+        } else {
+            // Sin la pista de vídeo aún no se sabe el BANDWIDTH: a la siguiente vuelta.
+            val format = exo.videoFormat ?: return false
+            PlaybackPolicy.neededForBitrate(format.bitrate) ?: run {
+                // No se puede juzgar, pero suena: aquí es donde se le quita la marca (ver onSourceWorking).
+                nodeJudged = true
+                if (!nodeMarkedSlow && embed != null) AnimeRepository.markSourceWorking(embed.url)
+                return false
+            }
+        }
         nodeJudged = true
-        val durationMs = exo.duration.takeIf { it != C.TIME_UNSET } ?: 0L
-        if (!PlaybackPolicy.tooSlow(m.bytesPerSecond(now), m.fileBytes, durationMs)) {
-            if (!nodeMarkedSlow) AnimeRepository.markSourceWorking(url)
+        // Lo que se apunta: el NODO de MP4Upload (cada fichero vive en uno) o el proveedor entero.
+        val markUrl = if (mp4upload || embed == null) url else embed.url
+        if (m.bytesPerSecond(now) >= needed) {
+            if (!nodeMarkedSlow) AnimeRepository.markSourceWorking(markUrl)
             return false
         }
-        val embed = currentStreamEmbed
         if (embed == null || insisted(embed) || nextUntriedSource(embed) == null) {
-            markNodeSlow(url)   // se respeta y sigue sonando; los episodios siguientes ya lo saben
+            markNodeSlow(markUrl)   // se respeta y sigue sonando; los episodios siguientes ya lo saben
             // Lo ha pedido él: que sepa por qué "Cargando…" no se va (en `a3` llegó a ser casi un
             // minuto), y que puede elegir otra.
             if (embed != null && insisted(embed)) {

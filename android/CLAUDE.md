@@ -46,6 +46,10 @@ data/
   StreamUrlParser.kt    mitad PURA de la resolución de stream (regex + transform Zilla +
                         secFetchSite + ¿es una playlist?), sin red ni Android
   VoeParser.kt          mitad PURA de Voe: stub → redirección JS → payload ofuscado; ver "Voe"
+  ByseParser.kt         mitad PURA de Byse: URLs de su API, reto, token y descifrado AES-GCM;
+                        ver "Byse"
+  BysePow.kt            mitad PURA: la prueba de trabajo de Byse (su hash propio y la búsqueda
+                        repartida entre hilos)
   EmbedParser.kt        mitad PURA de la lectura de servidores del episodio: resuelve el nodo
                         `embeds` a List<EmbedServer> con AMBAS pistas (SUB+DUB) etiquetadas
   BackupCodec.kt        mitad PURA del formato de copia de seguridad (JSON ⇄ las 3 tablas)
@@ -79,13 +83,16 @@ ui/
   update/               UpdateActivity ("Hay una versión nueva" → descarga → instala)
 AnimeApp.kt             Application; AnimeRepository.init(); appScope (ver más abajo)
 
-app/src/test/            tests JVM puros (JUnit4), 127 en total. Fixtures REALES capturados del
+app/src/test/            tests JVM puros (JUnit4), 143 en total. Fixtures REALES capturados del
                          sitio en test/resources/: catalogo__data.json, mp4upload-embed.html,
                          episodio__data.json (dandadan ep.1 — el único con SUB *y* DUB; captura
                          del 2026-09-24, ya con Voe y Byse) y las dos páginas de Voe
                          (voe-embed.html, el stub; voe-player.html, la real, recortada y con la
-                         IP/ASN de quien la capturó sustituidos). Cubren
-                         SvelteKitDecoder, StreamUrlParser, EmbedParser, VoeParser, MediaType,
+                         IP/ASN de quien la capturó sustituidos), y byse-playback.json (una
+                         respuesta real de `playback` de Byse, descifrada, con el ASN quitado y
+                         vuelta a cifrar con su misma clave: conserva los 30 trozos y señuelos).
+                         Cubren SvelteKitDecoder, StreamUrlParser, EmbedParser, VoeParser,
+                         ByseParser/BysePow (con vectores del JS original y dos retos reales), MediaType,
                          UpdateManifest y BackupCodec (incluido
                          que un backup del FORMAT 1 se siga importando, y que un FORMAT 3 SIN el
                          campo aditivo `prefs` siga entrando entero) — las piezas que más
@@ -163,9 +170,8 @@ reproducible por ExoPlayer:
   Sin JS, sin token. Fue el más fiable hasta que se cayó (ver abajo). ⚠️ **Casi no hay priorización
   por proveedor en código**: el reproductor toma el **índice 0** de lo que devuelve el sitio (o el
   `preferredServer`/`preferredAudio` heredados del episodio anterior), saltándose lo que ha fallado
-  hace poco, con UNA excepción: MP4Upload va delante en los aparatos con AV1 por hardware (ver
-  "MP4Upload"). Hoy Zilla sale primero porque el sitio lo lista primero; si eso cambiara, cambiaría el
-  servidor por defecto.
+  hace poco, con DOS excepciones (`PlaybackPolicy.rank`): **Byse va primero en todos los aparatos**
+  (ver "Byse") y MP4Upload va delante del resto en los que tienen AV1 por hardware (ver "MP4Upload").
   ⚠️⚠️ **La playlist NO basta: los segmentos exigen `Sec-Fetch-Site: same-origin`.** El Cloudflare que hay
   delante del CDN devuelve **403** a cada `/segs/<id>/NNN.html` cuyo request no traiga esa cabecera con ese
   valor **literal** (`same-site`, `cross-site`, `none` o cualquier otro → 403), mientras que `/m3u8/<id>` sí
@@ -265,7 +271,7 @@ reproducible por ExoPlayer:
     - **`judgeMp4UploadNode`**: en el primer READY, si tardó más de 12 s en sonar, su nodo se apunta
       como lento aunque no haya fallado (el `moov` a trompicones de `a3`). Arrancar rápido ya NO le
       quita la marca: eso lo decide el caudal.
-    - **Veredicto de CAUDAL (`judgeThroughput`)**, una vez por stream: tras 5 s de transferencia
+    - **Veredicto de CAUDAL (`judgeThroughput`; también para Byse, ver "Byse")**, una vez por stream: tras 5 s de transferencia
       ABIERTA (`ThroughputMeter`, que no cuenta lo que tarda cada conexión en abrirse: eso ya lo vigila
       el silencio de red), el nodo tiene que servir **1,5 × el bitrate medio del fichero** (tamaño de
       `Content-Range`/`Content-Length` ÷ la duración del player; mientras no se sabe, 1,6 Mbit/s fijos,
@@ -291,7 +297,8 @@ reproducible por ExoPlayer:
     único servidor del episodio → sigue; caudal insuficiente → a Voe en el mismo punto.
   Aun así, reanudar a mitad cuesta DOS conexiones (la del `moov` desde el byte 0 y la del salto): en
   un nodo rápido ~5-10 s en total, en una racha de `a3` bastante más.
-  **Orden por defecto (`PlaybackPolicy.rank`):** MP4Upload va PRIMERO solo si el aparato tiene
+  **Orden por defecto (`PlaybackPolicy.rank`):** detrás de Byse (que va primero en todos los aparatos),
+  MP4Upload va PRIMERO solo si el aparato tiene
   decodificador **AV1 Main10 1080p por hardware** (`Av1Support`, que se mira en segundo plano al
   arrancar con `MediaCodecUtil` y el codec string explícito: media3 1.3.1 no deriva uno para AV1 al leer
   el MP4, así que por su cuenta no comprobaría los 10 bits). Sin hardware, el orden del sitio (Voe
@@ -307,6 +314,58 @@ reproducible por ExoPlayer:
   no: Chromecast with Google TV 4K (2020), ningún Nvidia Shield. El emulador solo tiene AV1 por
   software (`c2.android.av1-dav1d`), así que allí el orden no cambia. El fallo reciente sigue pesando
   más que el rango, y la preferencia guardada de la serie, más que todo.
+- **Byse** (`byselapuix.com`) → **1080p en H.264 High de 8 bits** (`avc1.640028`), 3,4-4,9 Mbit/s de
+  media (el `BANDWIDTH` de su playlist ES la media; algún segmento llega a ~11), TS de 10 s, UNA
+  variante, sin cifrar. Es lo mejor del sitio: 2,25 veces los píxeles de Voe (que sale del mismo
+  origen, a 720p y ~1 Mbit/s) y cualquier tele lo decodifica por hardware. Su CDN (SprintCDN, en
+  Europa) sirvió 31-67 Mbit/s desde aquí. Está en todo lo subido desde julio de 2025 (55 de 86
+  episodios muestreados, todos los que están en emisión), siempre junto a Voe. Estuvo **filtrado
+  hasta la 1.5.10**; desde entonces va **primero en todos los aparatos**.
+  El embed es el cascarón de una SPA; la URL sale de su API, en el MISMO host (`ByseParser` documenta
+  el protocolo; `AnimeRepository.resolveByse` lo ejecuta):
+  1. `POST …/api/videos/<code>/embed/captcha` → reto; 2. **prueba de trabajo** (`BysePow`); 3. `POST
+  …/captcha/verify` → token; 4. `POST …/embed/playback` con `X-Captcha-Token` y `{"fingerprint":{}}` →
+  `playback` cifrado AES-256-GCM; 5. descifrar → `sources[0].url` (un `master.m3u8`).
+  - ⚠️ **La prueba de trabajo NO es SHA-256** aunque el servidor la llame `sha256-leading-zero-bits`:
+    es una mezcla ARX propia (cuarto de ronda de ChaCha, búfer de 2 KiB). Vale CUALQUIER solución que
+    cumpla, así que se reparte entre hilos (hasta 4). Si cambian la función, `verify` contesta **200**
+    con `{"status":"error","reason":"pow_failed"}`, no un error HTTP.
+  - ⚠️ **El token vale 30 min y para TODOS los vídeos** (su web lo guarda igual): la prueba de trabajo
+    se hace dos veces por hora de maratón, no una por episodio. Con token guardado, resolver es UNA
+    petición. Un 428 (token caducado) pide otro UNA vez.
+  - ⚠️⚠️ **User-Agent: la URL del CDN va atada a la CLASE de UA** (escritorio frente a Android/iOS) con
+    la que se pidió el `playback`; con la otra clase da **404**. Así que la API y el reproductor usan
+    el MISMO (`AnimeRepository.userAgentFor(embed)`), y el interceptor global ya **no pisa** un UA que
+    traiga la petición (antes hacía `header()`, que reemplaza). Es de clase **Android**, con la versión
+    y el modelo reales: la app ES un aparato Android, y Byse le pone a esa clase una prueba **4 bits más
+    fácil** (medido: 12 frente a 16 con el Firefox de escritorio del resto de la app).
+  - **Medido en el emulador**: dificultad 12, 4 hilos, **83 ms**; resolver entero (reto + prueba +
+    verificar + playback) **1,1 s**; con el token guardado el episodio siguiente arranca en <6 s
+    contando la carga de la ficha. Estimado para una TV (MT5895, sin medir): a dificultad 16, ~0,4-2 s
+    con 4 hilos.
+  - ⚠️ **La dificultad sube por IP** si se piden muchos retos: en una hora de pruebas pasó de 16 a 20
+    (16 veces más trabajo) y tardó en bajar. Por eso hay tope: `BYSE_BUDGET_MS` (12 s) para todo, de
+    los que la prueba puede gastar hasta 9; si no llega, falla como cualquier fuente y el fallback pasa
+    a Voe (y la marca de fallo deja a Byse detrás un rato).
+  - ⚠️ **Se salta su atestación del aparato.** Su JS trae un cliente completo (reto, firma ECDSA,
+    huella de canvas/WebGL/audio) cuyo resultado va en `fingerprint`; hoy el servidor solo exige que
+    la clave exista. Mandarla vacía es aprovechar que aún no lo comprueban (decisión del dueño de la
+    app). Si lo empiezan a exigir, el `playback` fallará y la app caerá a Voe sin más.
+  - La clave AES son dos de 30 trozos (posiciones `v` y `31 − v`, `v` = `version`, aleatoria en cada
+    respuesta; los otros 28 son señuelos de 24 bytes). Si cambian el reparto, la etiqueta GCM lo
+    delata y se prueban los dos trozos de 16 bytes en ambos órdenes.
+  - Caudal: pasa por el mismo veredicto que MP4Upload (lo que pide sale del `BANDWIDTH` × 1,5, que
+    media3 1.3.1 sí copia a la pista de vídeo). En una conexión que no da para ~5-7 Mbit/s, Voe a
+    720p se ve mejor que un 1080p que se para.
+  - La URL del CDN caduca a las 3 h (`e=10800`): los 10 min de `STREAM_TTL` quedan dentro.
+  - ⚠️ **A Byse no le quita la marca de fallo el READY** (`onSourceWorking`), solo su veredicto de
+    caudal: el veredicto marca el mismo host (byselapuix.com) que READY limpiaba, y el primer READY
+    llega antes que el veredicto (y hay otro tras cada rebuffer). En una conexión lenta, cada episodio
+    volvía a empezar en Byse para cambiar a Voe a los 5 s y la racha no crecía nunca. MP4Upload no
+    tiene el problema porque su veredicto marca el NODO. (Encontrado en la revisión adversarial.)
+  - **Un solo reto a la vez** (`byseLock`): una resolución cancelada sigue en su hilo hasta que la
+    prueba de trabajo se entera, y volver a elegir Byse entretanto pedía otro reto (cada uno cuenta
+    para que suba la dificultad). Un 428 solo borra el token si sigue siendo el que falló.
 - **YourUpload** → el `.mp4` está en texto plano en el HTML del embed, en `vidcache.net:8161`, y
   **redirige** (302) a `s410.vidcache.net:8166` — funciona porque `setAllowCrossProtocolRedirects(true)`.
   Requiere `Referer: yourupload.com` (sin él, HTTP 500). ⚠️ Es H.264 pero **High 10 (10 bits)**
@@ -320,11 +379,6 @@ reproducible por ExoPlayer:
     de `directUrlFrom` en todos los embeds probados del sitio real). VidHide sirve ahora desde
     `ryderjet.com` (respaldo por host): su JS empaquetado sí lleva playlists, pero todos sus segmentos
     daban 522/502 o no contestaban.
-  - `Byse` (`byselapuix.com`, desde septiembre de 2026) → el embed es el cascarón de una SPA; la URL
-    sale de una API con **prueba de trabajo** propia (dice "sha256" y no lo es) + descifrado
-    **AES-256-GCM**, con código de atestación del aparato ya incluido en su JS. Se pudo resolver 5 de
-    5 veces, pero es frágil y en una TV la prueba de trabajo podría tardar segundos; Voe está en los
-    mismos episodios con el mismo H.264. Antes de filtrarlo llegaba a la UI y fallaba siempre.
   - `DoodStream` → responde el reto JS de Cloudflare ("Just a moment…", HTTP 403); un GET plano no lo pasa.
   - `Netu` (hqq.ac) → sí deja un `.m3u8` en el HTML, pero es un **señuelo**: ruta de 2018, timestamp de
     2020 y la IP `94.25.170.26` incrustada en la propia URL. Ni siquiera conecta.
@@ -690,8 +744,12 @@ lleva el `EmbedServer` entero. Si añades comparaciones por nombre, vuelves a me
 - Extras del intent que necesita: `slug, number, title, coverUrl, backdropUrl, totalEpisodes, minEpisode,
   maxEpisode, seriesStatus, startDate, category, preferredServer, preferredAudio, preferredFromUser,
   isWatched`.
-  `preferredAudio` (`"SUB"`/`"DUB"`) se arrastra junto a `preferredServer` al pasar de episodio: si venías
-  viendo el doblaje, el siguiente episodio no debe saltar al subtitulado solo porque SUB va primero.
+  `preferredAudio` (`"SUB"`/`"DUB"`) se arrastra SIEMPRE al pasar de episodio: si venías viendo el
+  doblaje, el siguiente episodio no debe saltar al subtitulado solo porque SUB va primero.
+  ⚠️ `preferredServer` solo viaja si es una elección del usuario (`unsavedUserChoice`, con
+  `preferredFromUser`). Antes viajaba también lo que sonaba por el pick por defecto o por un
+  fallback, y UN fallback (Byse sin caudal un momento) dejaba el resto del maratón en Voe aunque Byse
+  volviera: esquivar lo que ha fallado es cosa de las marcas de fallo, que caducan y crecen.
 - Ciclo de vida: crea el player en `onStart` (API>23) / `onResume` (≤23), lo libera en `onStop`/`onPause`,
   preservando posición.
 

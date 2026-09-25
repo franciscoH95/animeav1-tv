@@ -2,17 +2,21 @@ package com.animeav1.data
 
 import android.content.Context
 import android.content.SharedPreferences
+import android.os.Build
 import android.os.SystemClock
 import androidx.core.content.edit
 import android.util.LruCache
 import com.animeav1.data.model.*
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.withContext
 import okhttp3.Cache
 import okhttp3.ConnectionPool
 import okhttp3.Dns
 import okhttp3.OkHttpClient
+import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.Request
+import okhttp3.RequestBody.Companion.toRequestBody
 import java.io.File
 import java.io.InterruptedIOException
 import java.net.InetAddress
@@ -23,6 +27,7 @@ import java.util.concurrent.ExecutionException
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.TimeoutException
+import kotlin.coroutines.coroutineContext
 
 object AnimeRepository {
 
@@ -57,6 +62,20 @@ object AnimeRepository {
     private const val VOE_MAX_HOPS = 3
 
     /**
+     * Tope TOTAL para resolver Byse: tres POST pequeños (~0,3-0,6 s cada uno) más la prueba de
+     * trabajo cuando no hay token guardado. Con la dificultad normal la prueba son milisegundos;
+     * si Byse la sube (lo hace por IP cuando se le piden muchos retos: se vio pasar de 16 a 20 en
+     * una hora de pruebas), no compensa esperar más que esto: Voe está en los mismos episodios.
+     */
+    private const val BYSE_BUDGET_MS = 12_000L
+
+    /** Lo que se reserva del tope para verificar la solución y pedir el `playback` tras el cálculo. */
+    private const val BYSE_NETWORK_RESERVE_MS = 3_000L
+
+    /** Margen con el que se da por caducado el token de Byse antes de su `expires_in`. */
+    private const val BYSE_TOKEN_MARGIN_MS = 60_000L
+
+    /**
      * Cuánto se da por caído un proveedor que acaba de fallar: 10 min la primera vez y el doble
      * con cada fallo seguido, hasta 2 h; reproducir con él lo borra. Ver [markSourceFailed].
      */
@@ -78,6 +97,33 @@ object AnimeRepository {
     @Volatile private var scheduleCache: Pair<Long, Map<String, List<ScheduleItem>>>? = null
 
     private lateinit var client: OkHttpClient
+
+    /**
+     * User-Agent para Byse (API y reproductor, siempre el MISMO: la URL de su CDN va atada a la clase
+     * de UA con la que se pidió y con otra da 404). Clase Android, que es lo que es la app: Byse le
+     * pide una prueba de trabajo 16 veces más fácil que a un navegador de escritorio.
+     */
+    private val byseUserAgent: String by lazy {
+        ByseParser.androidUserAgent(Build.VERSION.RELEASE.orEmpty(), Build.MODEL.orEmpty())
+    }
+
+    /**
+     * El User-Agent con el que se piden la página del embed y el vídeo de [embedUrl]. El resto de
+     * proveedores ven el Firefox de siempre ([USER_AGENT]).
+     */
+    fun userAgentFor(embedUrl: String?): String =
+        if (embedUrl != null && ByseParser.handles(embedUrl)) byseUserAgent else USER_AGENT
+
+    /** Token del captcha de Byse: vale 30 min y para TODOS sus vídeos (su web hace lo mismo). */
+    private class ByseToken(val value: String, val validUntil: Long)
+    @Volatile private var byseToken: ByseToken? = null
+
+    /**
+     * Un solo reto a la vez. Una resolución cancelada sigue en su hilo hasta que la prueba de trabajo
+     * se entera, y volver a elegir Byse entretanto pedía un segundo reto: cada reto sin resolver
+     * cuenta para que Byse suba la dificultad a esta IP.
+     */
+    private val byseLock = java.util.concurrent.locks.ReentrantLock()
 
     /**
      * Para todo lo que lleva a una URL de vídeo: páginas de embed y la comprobación de la playlist
@@ -161,7 +207,9 @@ object AnimeRepository {
                 val req = chain.request()
                 chain.proceed(
                     req.newBuilder()
-                        .header("User-Agent", USER_AGENT)
+                        // Solo si la petición no trae el suyo (Byse lleva uno de clase Android que
+                        // tiene que casar con el del reproductor; ver [userAgentFor]).
+                        .apply { if (req.header("User-Agent") == null) header("User-Agent", USER_AGENT) }
                         // Solo si la petición no trae el suyo: `header()` REEMPLAZA, así que la
                         // comprobación de la playlist de Zilla mandaba esto en vez del `*/*` del
                         // reproductor aunque lo pidiera explícitamente.
@@ -327,6 +375,9 @@ object AnimeRepository {
         streamCache.get(embedUrl)?.let { (ts, url) ->
             if (System.currentTimeMillis() - ts < STREAM_TTL) return@withContext url
         }
+        // La prueba de trabajo de Byse corre en sus propios hilos: que se paren si el usuario
+        // elige otra fuente o sale del episodio (la corrutina se cancela).
+        val job = coroutineContext[Job]
 
         val resolved = try {
             when {
@@ -335,6 +386,8 @@ object AnimeRepository {
                 // ⚠️ Voe NUNCA cae al scraper genérico: su página real trae un mp4 señuelo que
                 // `directUrlFrom` se tragaría (ver VoeParser).
                 VoeParser.handles(embedUrl) -> resolveVoe(embedUrl)
+                // Byse: prueba de trabajo + AES-GCM. El HTML del embed no trae nada que scrapear.
+                ByseParser.handles(embedUrl) -> resolveByse(embedUrl) { job?.isActive == false }
                 // El resto: scrapear la URL directa del HTML del embed.
                 else -> scrapeStreamUrl(embedUrl)
             }
@@ -395,6 +448,90 @@ object AnimeRepository {
             url = next
         }
         return null
+    }
+
+    /**
+     * Byse (ver [ByseParser], que documenta el protocolo): con un token guardado es UNA petición;
+     * sin él, reto → prueba de trabajo → verificar → playback. El token se comparte entre vídeos
+     * 30 min, así que en un maratón la prueba de trabajo se hace dos veces por hora. Si el token
+     * guardado ya no vale (428), se consigue otro UNA vez.
+     */
+    private fun resolveByse(embedUrl: String, cancelled: () -> Boolean): String? {
+        val deadlineAt = clock() + BYSE_BUDGET_MS
+        val api = ByseParser.apiBase(embedUrl) ?: return null
+        byseToken?.takeIf { it.validUntil > clock() }?.let { saved ->
+            when (val r = bysePlayback(api, embedUrl, saved.value, deadlineAt)) {
+                is ByseResult.Stream -> return r.url
+                // Solo si sigue siendo ESE: otra resolución puede haber conseguido ya uno nuevo.
+                ByseResult.NeedsCaptcha -> synchronized(this) { if (byseToken === saved) byseToken = null }
+                ByseResult.Failed -> return null
+            }
+        }
+        val token = freshByseToken(api, embedUrl, deadlineAt, cancelled) ?: return null
+        return (bysePlayback(api, embedUrl, token, deadlineAt) as? ByseResult.Stream)?.url
+    }
+
+    /** Un token válido: el que acabe de conseguir otra resolución, o uno nuevo (con el candado). */
+    private fun freshByseToken(api: String, embedUrl: String, deadlineAt: Long, cancelled: () -> Boolean): String? {
+        val wait = (deadlineAt - clock()).coerceAtLeast(0)
+        if (!byseLock.tryLock(wait, TimeUnit.MILLISECONDS)) return null
+        try {
+            byseToken?.takeIf { it.validUntil > clock() }?.let { return it.value }
+            return byseCaptcha(api, embedUrl, deadlineAt, cancelled)
+        } finally {
+            byseLock.unlock()
+        }
+    }
+
+    private sealed class ByseResult {
+        class Stream(val url: String) : ByseResult()
+        object NeedsCaptcha : ByseResult()
+        object Failed : ByseResult()
+    }
+
+    /** Reto → prueba de trabajo (repartida entre núcleos) → verificar. Guarda el token. */
+    private fun byseCaptcha(api: String, embedUrl: String, deadlineAt: Long, cancelled: () -> Boolean): String? {
+        val challenge = byseRequest("$api/captcha", embedUrl, "{}", deadlineAt) { res ->
+            if (res.isSuccessful) ByseParser.challengeFrom(res.body?.string().orEmpty()) else null
+        } ?: return null
+        val powDeadline = deadlineAt - BYSE_NETWORK_RESERVE_MS
+        val threads = Runtime.getRuntime().availableProcessors().coerceIn(1, 4)
+        val solution = BysePow.solve(challenge.nonce, challenge.difficulty, threads) {
+            cancelled() || clock() > powDeadline
+        } ?: return null
+        val (token, expiresInS) = byseRequest(
+            "$api/captcha/verify", embedUrl, ByseParser.verifyBody(challenge, solution), deadlineAt
+        ) { res ->
+            if (res.isSuccessful) ByseParser.captchaTokenFrom(res.body?.string().orEmpty()) else null
+        } ?: return null
+        byseToken = ByseToken(token, clock() + expiresInS * 1000 - BYSE_TOKEN_MARGIN_MS)
+        return token
+    }
+
+    private fun bysePlayback(api: String, embedUrl: String, token: String, deadlineAt: Long): ByseResult =
+        byseRequest("$api/playback", embedUrl, ByseParser.PLAYBACK_BODY, deadlineAt, token) { res ->
+            when {
+                res.code == 428 -> ByseResult.NeedsCaptcha
+                !res.isSuccessful -> ByseResult.Failed
+                else -> ByseParser.streamFrom(res.body?.string().orEmpty())
+                    ?.let { ByseResult.Stream(it) } ?: ByseResult.Failed
+            }
+        }
+
+    /** POST JSON a la API de Byse con su User-Agent (el que usará el reproductor). */
+    private fun <T> byseRequest(
+        url: String, embedUrl: String, body: String, deadlineAt: Long,
+        captchaToken: String? = null, read: (okhttp3.Response) -> T
+    ): T {
+        val origin = "https://" + (runCatching { java.net.URI(embedUrl).host }.getOrNull() ?: "byselapuix.com")
+        val req = Request.Builder().url(url)
+            .header("User-Agent", userAgentFor(embedUrl))
+            .header("Referer", embedUrl)
+            .header("Origin", origin)
+            .apply { if (captchaToken != null) header("X-Captcha-Token", captchaToken) }
+            .post(body.toRequestBody("application/json".toMediaType()))
+            .build()
+        return execute(req, deadlineAt, read)
     }
 
     /**

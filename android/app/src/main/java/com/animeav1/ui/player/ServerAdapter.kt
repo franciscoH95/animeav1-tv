@@ -120,6 +120,9 @@ class ServerAdapter(private val onClick: (EmbedServer) -> Unit)
     private fun serverTypeLabel(e: EmbedServer): String {
         val lower = e.url.lowercase() + e.server.lowercase()
         return when {
+            // Byse: un master.m3u8 con UNA variante 1080p (24 de 24 resueltos). Si algún día trae
+            // otras resoluciones, este rótulo mentiría: cámbialo.
+            lower.contains("byse") -> "HLS 1080p"
             // Voe también acaba en un master.m3u8 (ver VoeParser).
             lower.contains("m3u8") || lower.contains("hls") || lower.contains("voe") -> "HLS Stream"
             // Los dos progresivos: el .mp4 sale en texto plano del HTML del embed.
@@ -131,7 +134,7 @@ class ServerAdapter(private val onClick: (EmbedServer) -> Unit)
     private fun serverIcon(e: EmbedServer): String {
         val lower = e.url.lowercase() + e.server.lowercase()
         return when {
-            lower.contains("m3u8") || lower.contains("hls") || lower.contains("voe") -> "📡"
+            lower.contains("m3u8") || lower.contains("hls") || lower.contains("voe") || lower.contains("byse") -> "📡"
             lower.contains("mp4upload") || lower.contains("yourupload") -> "▶"
             else -> "🌐"
         }

@@ -39,7 +39,7 @@ class EmbedParserTest {
     /**
      * Solo deben sobrevivir los servidores de los que la app sabe sacar una URL reproducible, en el
      * orden del sitio. El fixture trae 10 en SUB y 7 en DUB; se comprobó contra el sitio real que
-     * únicamente HLS, Voe, YourUpload y MP4Upload resuelven (ver el KDoc de
+     * únicamente HLS, Voe, YourUpload, MP4Upload y Byse (este solo en DUB en ese episodio) resuelven (ver el KDoc de
      * [EmbedParser.UNSUPPORTED_SERVERS]). El DUB trae DOS entradas Voe con URLs distintas y llegan
      * las dos, aunque las dos resuelven al MISMO fichero (`1_1_DUB.mp4`, mismo stream en el CDN).
      */
@@ -50,7 +50,7 @@ class EmbedParserTest {
             parsed.filter { it.audio == AudioTrack.SUB }.map { it.server }
         )
         assertEquals(
-            listOf("HLS", "Voe", "Voe", "MP4Upload"),
+            listOf("HLS", "Voe", "Voe", "Byse", "MP4Upload"),
             parsed.filter { it.audio == AudioTrack.DUB }.map { it.server }
         )
     }
@@ -65,8 +65,7 @@ class EmbedParserTest {
             "DoodStream" to "https://dooodster.com/e/rhvyfowrkup8",
             "Netu" to "https://hqq.ac/e/dnNMcFlnRGtP",
             "VidHide" to "https://ryderjet.com/embed/e5kvdxcscdyl",
-            "StreamTape" to "https://streamtape.com/e/xZldR2Pl3bCkGDG/",
-            "Byse" to "https://byselapuix.com/e/uftud7u67ay3"        // prueba de trabajo + AES
+            "StreamTape" to "https://streamtape.com/e/xZldR2Pl3bCkGDG/"
         )
         for ((server, url) in descartados) {
             assertTrue(
@@ -82,7 +81,8 @@ class EmbedParserTest {
             "HLS" to "https://player.zilla-networks.com/play/aced41de84f231b5095a124e19c63f9c",
             "MP4Upload" to "https://www.mp4upload.com/embed-nzl6vpv2j8fv.html",
             "YourUpload" to "https://www.yourupload.com/embed/H4dQly801Rou",
-            "Voe" to "https://voe.sx/e/bnpyhzir3pee"
+            "Voe" to "https://voe.sx/e/bnpyhzir3pee",
+            "Byse" to "https://byselapuix.com/e/uftud7u67ay3"   // prueba de trabajo + AES: ver ByseParser
         )
         for ((server, url) in soportados) {
             assertFalse(
@@ -105,7 +105,7 @@ class EmbedParserTest {
     /** Si el sitio renombra la etiqueta, el host sigue delatando al proveedor. */
     @Test
     fun `filtra por host aunque cambie la etiqueta`() {
-        assertTrue(EmbedParser.isUnsupported(EmbedServer("Byse2", "https://byselapuix.com/e/x")))
+        assertTrue(EmbedParser.isUnsupported(EmbedServer("UPN", "https://animeav1.uns.bio/#x")))
         assertTrue(EmbedParser.isUnsupported(EmbedServer("VH", "https://ryderjet.com/embed/x")))
     }
 

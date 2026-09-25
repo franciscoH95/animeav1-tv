@@ -32,12 +32,9 @@ internal object EmbedParser {
      *   probados; DoodStream responde el reto JS de Cloudflare ("Just a moment…", HTTP 403), que
      *   un GET plano no puede resolver; y Netu sí deja un `.m3u8` en el HTML, pero es un **señuelo**
      *   (ruta de 2018, timestamp de 2020 y la IP `94.25.170.26` incrustada) que ni siquiera conecta.
-     * - `byse` (`byselapuix.com`, aparece en septiembre de 2026) → el embed es el cascarón de una
-     *   SPA sin ninguna URL; la de verdad sale de una API que exige una prueba de trabajo propia
-     *   (etiquetada "sha256" sin serlo) y descifrar AES-256-GCM, con código de atestación del
-     *   aparato ya incluido en su JS para cuando decidan exigirlo. Se puede resolver (5 de 5 en
-     *   pruebas), pero es frágil, y en una TV la prueba de trabajo podría tardar segundos. Voe, que
-     *   está en los mismos episodios y da el mismo H.264, se resuelve de forma estable.
+     *
+     * Byse (`byselapuix.com`) estuvo aquí hasta la 1.5.10 y ya NO: da 1080p H.264, lo mejor del
+     * sitio, y se resuelve con su prueba de trabajo (ver `ByseParser`).
      *
      * ⚠️ Esto es una lista negra a propósito, no una lista blanca: un servidor **nuevo** que el
      * sitio empiece a ofrecer sigue apareciendo y se le da la oportunidad de resolver. Solo se
@@ -48,8 +45,7 @@ internal object EmbedParser {
      */
     private val UNSUPPORTED_SERVERS = setOf(
         "mega", "upnshare",
-        "terabox", "streamtape", "vidhide", "netu", "doodstream",
-        "byse"
+        "terabox", "streamtape", "vidhide", "netu", "doodstream"
     )
 
     /**
@@ -60,7 +56,7 @@ internal object EmbedParser {
      */
     private val UNSUPPORTED_HOSTS = listOf(
         "mega.nz", "uns.bio", "upnshare", "terabox.com", "streamtape", "hqq.ac",
-        "byselapuix.com", "ryderjet.com"
+        "ryderjet.com"
     )
 
     /** Orden de presentación: subtitulado primero, que es lo que trae casi todo el catálogo. */
