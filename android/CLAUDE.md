@@ -24,7 +24,8 @@ Room, media3 (ExoPlayer), Coil. `applicationId = com.animeav1`, `minSdk 21`, `ta
   se queda desfasado (se vio 30 días atrás), TODA petición a animeav1 falla con **"Chain validation
   failed"** —su certificado aún no era válido en la fecha del emulador— y la app lo enseña tal cual.
   Sin root sí se puede fijar: `adb shell cmd time_detector suggest_network_time --elapsed_realtime
-  <uptime ms> --unix_epoch_time <epoch ms del host>`; `cmd time_detector clear_network_time` lo deshace.
+  <uptime ms> --unix_epoch_time <epoch ms del host> --uncertainty_millis 1000` (sin el último argumento
+  esta imagen lo rechaza); `cmd time_detector clear_network_time` lo deshace.
 - **⚠️ Gotcha de firma:** `adb install -r` suele fallar con `INSTALL_FAILED_UPDATE_INCOMPATIBLE`
   (la versión instalada por Android Studio se firma con otra clave). **Solución:** `adb uninstall com.animeav1`
   y luego `adb install ...`. Esto **borra los datos locales** (Room) del emulador — normal en pruebas.
@@ -70,13 +71,15 @@ ui/
   player/PlaybackPolicy.kt  mitad PURA de lo que depende de la fuente: tiempos de espera, búfer y
                         paciencia del watchdog de MP4Upload, orden por defecto (ver "MP4Upload")
   player/Av1Support.kt  si el aparato decodifica AV1 Main10 por HARDWARE (se mira al arrancar)
+  player/ThroughputMeter.kt  mitad PURA: caudal de un stream contando solo el tiempo con una
+                        transferencia abierta (el veredicto de caudal de MP4Upload)
   profile/              ProfilesActivity (selector + gestión), ProfileSettingsActivity (ajustes del
                         perfil: perfiles + copia), ProfileAdapter, ProfileAvatars
   backup/               BackupActivity (exportar / importar)
   update/               UpdateActivity ("Hay una versión nueva" → descarga → instala)
 AnimeApp.kt             Application; AnimeRepository.init(); appScope (ver más abajo)
 
-app/src/test/            tests JVM puros (JUnit4), 120 en total. Fixtures REALES capturados del
+app/src/test/            tests JVM puros (JUnit4), 127 en total. Fixtures REALES capturados del
                          sitio en test/resources/: catalogo__data.json, mp4upload-embed.html,
                          episodio__data.json (dandadan ep.1 — el único con SUB *y* DUB; captura
                          del 2026-09-24, ya con Voe y Byse) y las dos páginas de Voe
@@ -179,6 +182,10 @@ reproducible por ExoPlayer:
   `/m3u8/<id>`, y la web de animeav1 incrusta el mismo iframe, así que allí tampoco funciona. Solo se
   sirven segmentos viejos que Cloudflare tenía en caché, y sin playlist no sirven de nada. El sitio
   sigue poniendo HLS el primero de cada pista. Si vuelve, funciona sin tocar nada.
+  ⚠️ **Y desde ~2026-09-25 el sitio ya ni lo lista**: HLS (Zilla) y Mega han desaparecido de los 86
+  episodios muestreados (diff de dandadan ep. 1 contra el fixture: solo faltan esas dos entradas), así
+  que hoy el primer servidor reproducible de cada pista es Voe. El fixture `episodio__data.json` (del
+  09-24) todavía los trae.
   ⚠️ **Por eso `resolveZilla` comprueba la playlist antes de darla por buena** (`playlistAnswers`: GET
   con las cabeceras del reproductor —`Accept: */*`; ⚠️ el interceptor global del cliente solo pone su
   `application/json,*/*` si la petición no trae `Accept`: antes lo REEMPLAZABA (`header()` pisa) y la
@@ -215,7 +222,7 @@ reproducible por ExoPlayer:
   (`...\.mp4(?=["'\s<>]|$)`); si no, `.mp4` casa con el **dominio** `mp4upload.com` y extrae el `.js` del player.
   Es indiferente a las cabeceras `Sec-Fetch-*` (verificado: 206 con y sin ellas). Es **AV1 Main de
   10 bits** 1080p24 (`av01.0.08M.10`, leído del `av1C`), ~1,3 Mbit/s de media, `moov` al principio
-  (0,7-1,3 MB).
+  (0,7-1,3 MB). (Los episodios de Kakkou no Iinazuke S2 medidos después: 0,72-1,04 Mbit/s de media.)
   **Cómo carga, medido (2026-09-24, 86 episodios):** cada fichero vive en UN nodo (`a3` o `a4`, ~mitad
   y mitad; el mismo camino en otro nodo da 404). `a4` contesta al TLS en ~0,8 s siempre y arranca en
   ~6 s de mediana. `a3` va a **rachas**: a ratos igual de rápido, y durante largos periodos tarda
@@ -227,6 +234,11 @@ reproducible por ExoPlayer:
   petición (el `moov`, cada salto, cada reconexión) paga su propio handshake. Caudal en `a4` ~2,6
   Mbit/s, justo para los ficheros de más bitrate. Y 11 de 86 embeds de Voe estaban muertos (404): en 9
   de esos episodios la única copia que funciona es MP4Upload en `a3`.
+  **Y cambian de un momento a otro** (misma noche, 2026-09-24): aparece un tercer nodo, **`a1`** (TLS
+  0,8 s, ~3 Mbit/s); `a4` contestó en 0,8 s pero sirvió **0,9 Mbit/s** —menos que lo que piden los
+  ficheros en sus escenas movidas— y media hora después 4 Mbit/s; `a3` tardó **39 s** en el handshake y
+  luego sirvió 0,1-1,3 Mbit/s. Por eso nada de esto se decide una vez: se MIDE en cada stream (ver el
+  veredicto de caudal abajo).
   ⚠️⚠️ **En Android el handshake TLS lo acota el tiempo de LECTURA**, no el de conexión (la okhttp de la
   plataforma pone `setSoTimeout(readTimeout)` antes de `startHandshake`), y media3 trae 8 s: en cada
   racha de `a3` todos los intentos morían a los 8 s y MP4Upload **no llegaba a sonar nunca** (el
@@ -251,13 +263,32 @@ reproducible por ExoPlayer:
     `aN.mp4upload.com`): marcando www.mp4upload.com, un tropiezo de `a3` mandaba al final también los
     ficheros de `a4`, que van bien. El nodo solo se sabe al resolver (~0,5 s), así que:
     - **`judgeMp4UploadNode`**: en el primer READY, si tardó más de 12 s en sonar, su nodo se apunta
-      como lento aunque no haya fallado (el `moov` a trompicones de `a3`); si fue rápido, se le quita la
-      marca, y así se nota cuando `a3` se recupera.
-    - **`skipKnownSlowNode`**: un MP4Upload puesto por la APP que resuelve a un nodo marcado se salta al
-      instante —en ~2 s en vez de 8 s de silencio o 20-40 s de arranque—, salvo que sea el último
-      recurso. Verificado en el emulador forzando la ruta (sin AV1 por hardware no se da): al reabrir
-      un episodio de `a3` ya marcado, "MP4Upload no responde. Probando…" a los 2,1 s.
+      como lento aunque no haya fallado (el `moov` a trompicones de `a3`). Arrancar rápido ya NO le
+      quita la marca: eso lo decide el caudal.
+    - **Veredicto de CAUDAL (`judgeThroughput`)**, una vez por stream: tras 5 s de transferencia
+      ABIERTA (`ThroughputMeter`, que no cuenta lo que tarda cada conexión en abrirse: eso ya lo vigila
+      el silencio de red), el nodo tiene que servir **1,5 × el bitrate medio del fichero** (tamaño de
+      `Content-Range`/`Content-Length` ÷ la duración del player; mientras no se sabe, 1,6 Mbit/s fijos,
+      `PlaybackPolicy.tooSlow`). ⚠️ Hacía falta porque un nodo que contesta rápido pero sirve poco (el
+      `a4` de 0,9 Mbit/s) nunca se calla —el watchdog no lo ve— y corta a mitad de episodio. Si no
+      llega: se marca el nodo y, salvo que el usuario lo haya pedido en este episodio o sea el último
+      recurso, a la siguiente fuente **en el mismo punto** ("MP4Upload va muy lento ahora mismo.
+      Probando Voe…"). Si llega (y no tardó en arrancar), se le quita la marca: así se nota cuando un
+      nodo se recupera. Si lo pidió el usuario, sigue sonando y un aviso le dice que va lento y que
+      puede elegir otra (⚠️ los toasts de Android 12+ se cortan en dos líneas: el texto está medido).
+    - **`skipKnownSlowNode`**: un MP4Upload que resuelve a un nodo marcado se salta al instante —en
+      ~1,3 s en vez de 8 s de silencio o 20-40 s de arranque—, salvo que el usuario lo haya pedido en
+      ESTE episodio (`insisted`) o sea el último recurso. ⚠️ **También si es la preferencia guardada
+      de la serie**: la preferencia dice "MP4Upload cuando funcione", no "este fichero a cualquier
+      precio". Con la regla anterior (no saltar lo que "eligió el usuario", preferencias incluidas) un
+      episodio en `a3` dejaba "Cargando vídeo desde MP4Upload" **43 s** en pantalla (medido en la
+      Philips de abajo). La preferencia no se toca: el fallback no la escribe.
     Los fallos al RESOLVER (la página del embed) siguen marcando www.mp4upload.com.
+    Verificado en el emulador forzando AV1 por hardware (y, para la rama del caudal, inflando el
+    margen): nodo bueno → suena en ~3 s y el veredicto lo da por bueno; `a3` en racha → "no responde"
+    a los 9 s; otro episodio de `a3` → "va muy lento" a los 1,3 s, también tras cerrar la app; con
+    MP4Upload como preferencia → igual, sin esperar; elegido en el panel → espera, se marca y avisa;
+    único servidor del episodio → sigue; caudal insuficiente → a Voe en el mismo punto.
   Aun así, reanudar a mitad cuesta DOS conexiones (la del `moov` desde el byte 0 y la del salto): en
   un nodo rápido ~5-10 s en total, en una racha de `a3` bastante más.
   **Orden por defecto (`PlaybackPolicy.rank`):** MP4Upload va PRIMERO solo si el aparato tiene
@@ -266,9 +297,14 @@ reproducible por ExoPlayer:
   el MP4, así que por su cuenta no comprobaría los 10 bits). Sin hardware, el orden del sitio (Voe
   delante) y **las fuentes AV1 al FINAL** —MP4Upload y también Zilla, cuyos segmentos son AV1—: por
   software, 1080p de 10 bits va a tirones en una tele, o ni hay decodificador (solo audio). Con Zilla
-  caído, esto además ahorra en esas teles los 8 s de probar HLS en el primer episodio. Sí tienen AV1 por hardware (según
-  fuentes, no probado): Chromecast with Google TV HD (2022), Google TV Streamer, Fire TV 4K Max y 4K de
-  2ª gen; no: Chromecast with Google TV 4K (2020), ningún Nvidia Shield. El emulador solo tiene AV1 por
+  caído, esto además ahorra en esas teles los 8 s de probar HLS en el primer episodio.
+  **Probado en un aparato real: Philips OLED706** (2021, `PH1M_EA_9970A`, MediaTek **MT5895**,
+  Android 10 / API 29, heap 192 MB): declara `OMX.MTK.VIDEO.DECODER.AV1` (hasta 4096×2304 a 60), la
+  detección da sí, MP4Upload sale primero y el vídeo se ve limpio. Lo que falló allí no fue el
+  decodificador sino los nodos (ver arriba). Para leer una tele así: Opciones de desarrollador →
+  Depuración USB y `adb connect <ip>:5555`. Según fuentes (sin probar) también tienen AV1 por
+  hardware: Chromecast with Google TV HD (2022), Google TV Streamer, Fire TV 4K Max y 4K de 2ª gen;
+  no: Chromecast with Google TV 4K (2020), ningún Nvidia Shield. El emulador solo tiene AV1 por
   software (`c2.android.av1-dav1d`), así que allí el orden no cambia. El fallo reciente sigue pesando
   más que el rango, y la preferencia guardada de la serie, más que todo.
 - **YourUpload** → el `.mp4` está en texto plano en el HTML del embed, en `vidcache.net:8161`, y
@@ -463,6 +499,12 @@ lleva el `EmbedServer` entero. Si añades comparaciones por nombre, vuelves a me
     elegir la primera fila de DOBLADO para cambiar de idioma) pagaba 8 s en cada episodio. Un plazo
     fijo largo sería peor al revés: un corte de red de un momento dejaría a Voe al final durante horas.
     Por eso al caducar la entrada NO se borra: la racha tiene que sobrevivir.
+  - ⚠️ **Las marcas sobreviven a cerrar la app** (SharedPreferences `source_failures`, `host →
+    "horaDePared,racha"`). En una TV el proceso muere entre sesiones, y sin esto el primer episodio de
+    cada tarde volvía a esperar a Zilla (caído desde hace días) y a un nodo de MP4Upload que la sesión
+    anterior ya había descartado. Se guarda la hora de PARED —`elapsedRealtime` vuelve a cero al
+    reiniciar la tele— y al leerla se convierte en edad; una marca de más de 24 h se olvida con racha
+    y todo.
   - ⚠️ **La pista se decide ANTES de ordenar** (`pickDefaultEmbed`): la preferida si el episodio la
     trae; si no, la primera (SUB). Ordenando las dos pistas juntas, sin preferencia de audio (el caso
     normal al abrir desde la ficha o Inicio) y con los hosts de SUB marcados, el primer "vivo" podía
@@ -509,16 +551,17 @@ lleva el `EmbedServer` entero. Si añades comparaciones por nombre, vuelves a me
   en `STATE_BUFFERING` para siempre, sin error). `startStallWatchdog` (loop 1s) vigila `bufferedPosition`:
   si no avanza en **25s** de buffering → `onStallTimeout()` = release + error "X no responde" + panel de
   servidores. Se cancela en `releasePlayer`.
-  ⚠️ **Para MP4Upload la regla es otra (`isStalled`)**: además del búfer parado tiene que haber
-  **silencio de red** (`lastNetActivityAt`, que actualiza un `TransferListener` del data source) todo
-  ese tiempo, porque un handshake de 40 s en una racha de `a3` no manda ni un byte y no está muerto; y
-  mientras lleguen bytes (un `moov` de 1,3 MB en un nodo lento) se espera. La paciencia depende de
-  quién lo puso (`PlaybackPolicy.quietBudgetMs`): **8 s si lo puso la app** (el orden por defecto o un
-  fallback: el primer byte llega normalmente en 2-4 s, así que 8 s de silencio es una racha; a otra
-  fuente ya, y su nodo queda marcado) y **50 s con paciencia** (más que los 45 s de lectura): si lo
-  eligió el usuario, si ya ha sonado, si es la fuente que el usuario mandó **"Reintentar"**
-  (`retriedEmbed`: cuenta como suya, pero no se guarda como preferencia) y si es el **último
-  recurso** —sin eso, en los episodios cuyo Voe está muerto la única copia buena (MP4Upload en `a3`)
+  ⚠️ **Para MP4Upload la regla es otra (`isStalled`)** (y además está el veredicto de caudal, ver
+  "MP4Upload"): además del búfer parado tiene que haber **silencio de red** (`lastNetActivityAt`, que
+  actualiza un `TransferListener` del data source) todo ese tiempo, porque un handshake de 40 s en una
+  racha de `a3` no manda ni un byte y no está muerto; y mientras lleguen bytes (un `moov` de 1,3 MB en
+  un nodo lento) se espera. La paciencia depende de quién lo puso (`PlaybackPolicy.quietBudgetMs`):
+  **8 s si lo puso la app** (el orden por defecto, un fallback **o la preferencia guardada o traída**:
+  el primer byte llega normalmente en 2-4 s, así que 8 s de silencio es una racha; a otra fuente ya, y
+  su nodo queda marcado) y **50 s con paciencia** (más que los 45 s de lectura): si el usuario lo ha
+  **pedido en ESTE episodio** (`insisted`: lo pulsó en el panel —`clickedEmbed`— o le dio a
+  **"Reintentar"** —`retriedEmbed`, que no se guarda como preferencia—), si ya ha sonado y si es el
+  **último recurso** —sin eso, en los episodios cuyo Voe está muerto la única copia buena (MP4Upload en `a3`)
   se cortaba a los 8 s y acababa en "ninguna fuente responde"—. El resto de fuentes siguen EXACTAMENTE
   con la regla de 25 s.
 - **Solo audio = fallo.** Si el stream trae vídeo y NINGUNA pista de vídeo queda seleccionada (lo típico:

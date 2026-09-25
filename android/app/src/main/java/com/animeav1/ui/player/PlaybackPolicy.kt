@@ -53,19 +53,20 @@ internal object PlaybackPolicy {
     const val DEFAULT_STALL_MS = 25_000L
 
     /**
-     * MP4Upload puesto por la app (el orden por defecto o un fallback). En los dos nodos medidos el
-     * primer byte llega en 2-4 s; más de 8 s de silencio solo pasa en una racha lenta, que puede
-     * durar hasta ~42 s: mejor Voe ya. El fallo lo pone detrás en los episodios siguientes
+     * MP4Upload puesto por la app (el orden por defecto, un fallback o la preferencia guardada de la
+     * serie: ver `PlayerActivity.insisted`). En los nodos medidos el primer byte llega en 2-4 s;
+     * más de 8 s de silencio solo pasa en una racha lenta, que puede durar hasta ~42 s: mejor Voe ya. El fallo lo pone detrás en los episodios siguientes
      * (`markSourceFailed`), así que se adapta solo. Mientras lleguen bytes —un `moov` de 1,3 MB en
      * un nodo lento— no cuenta como silencio y se espera.
      */
     const val MP4UPLOAD_AUTO_QUIET_MS = 8_000L
 
     /**
-     * MP4Upload con paciencia: más que el tiempo de lectura (45 s). Cuando lo eligió el usuario, cuando
-     * ya ha sonado, y cuando es el ÚLTIMO RECURSO (no queda otra fuente sin probar): hay episodios en
-     * los que Voe está muerto (11 de 86 en el sondeo) y la única copia es MP4Upload en un nodo lento;
-     * cortarlo a los 8 s acababa en "ninguna fuente responde" con una que sí funcionaba.
+     * MP4Upload con paciencia: más que el tiempo de lectura (45 s). Cuando el usuario lo ha pedido en
+     * ESTE episodio (panel o "Reintentar"), cuando ya ha sonado, y cuando es el ÚLTIMO RECURSO (no
+     * queda otra fuente sin probar): hay episodios en los que Voe está muerto (11 de 86 en el
+     * sondeo) y la única copia es MP4Upload en un nodo lento; cortarlo a los 8 s acababa en "ninguna
+     * fuente responde" con una que sí funcionaba.
      */
     const val MP4UPLOAD_PATIENT_QUIET_MS = 50_000L
 
@@ -89,6 +90,51 @@ internal object PlaybackPolicy {
     const val MP4UPLOAD_SLOW_START_MS = 12_000L
 
     fun isSlowStart(startMs: Long): Boolean = startMs > MP4UPLOAD_SLOW_START_MS
+
+    // ── Caudal de MP4Upload ───────────────────────────────────────────────────────────────────
+
+    /**
+     * Tiempo de transferencia abierta que se mide antes de juzgar el nodo (ver [ThroughputMeter]).
+     * Al arrancar el cargador lee sin parar —el búfer de 120 s tarda en llenarse—, así que esto mide
+     * el nodo y no lo que le deja leer media3.
+     */
+    const val MP4UPLOAD_THROUGHPUT_WINDOW_MS = 5_000L
+
+    /**
+     * Cuánto por encima del bitrate MEDIO del fichero tiene que servir el nodo. Es VBR: las escenas
+     * movidas piden bastante más que la media durante decenas de segundos, y con el caudal justo
+     * cada una vacía el búfer. Medido (2026-09-24): `a4` contestaba en 0,8 s pero servía 0,9 Mbit/s
+     * con ficheros de 0,7-0,8 de media, y `a3`, tras sus 39 s de handshake, 0,5-1,3.
+     */
+    const val MP4UPLOAD_THROUGHPUT_MARGIN = 1.5
+
+    /**
+     * Lo que se exige mientras no se sabe el bitrate del fichero (sin tamaño en las cabeceras, o
+     * sin la duración porque el `moov` aún no ha llegado —lo típico en un nodo lento—): 1,6 Mbit/s,
+     * 1,5 × el fichero de más bitrate medido (1,04 Mbit/s).
+     */
+    const val MP4UPLOAD_FALLBACK_NEEDED_BYTES_PER_S = 200_000L
+
+    fun neededBytesPerSecond(sizeBytes: Long, durationMs: Long): Long =
+        if (sizeBytes > 0 && durationMs > 0) (sizeBytes * 1000.0 / durationMs * MP4UPLOAD_THROUGHPUT_MARGIN).toLong()
+        else MP4UPLOAD_FALLBACK_NEEDED_BYTES_PER_S
+
+    fun tooSlow(bytesPerSecond: Long, sizeBytes: Long, durationMs: Long): Boolean =
+        bytesPerSecond < neededBytesPerSecond(sizeBytes, durationMs)
+
+    /**
+     * Tamaño TOTAL del fichero según las cabeceras de una respuesta: `Content-Range: bytes a-b/N`,
+     * o el `Content-Length` si la petición empezaba en 0 (sin `Range`, media3 no lo manda). 0 si no se
+     * sabe. Las claves se buscan sin distinguir mayúsculas: `HttpURLConnection` las deja como las
+     * escribió el servidor.
+     */
+    fun totalSizeFrom(headers: Map<String, List<String>>, requestPosition: Long): Long {
+        fun header(name: String) =
+            headers.entries.firstOrNull { it.key.equals(name, ignoreCase = true) }?.value?.firstOrNull()
+        header("Content-Range")?.substringAfterLast('/', "")?.trim()?.toLongOrNull()?.let { return it }
+        if (requestPosition == 0L) header("Content-Length")?.trim()?.toLongOrNull()?.let { return it }
+        return 0
+    }
 
     // ── Orden de las fuentes ──────────────────────────────────────────────────────────────────
 

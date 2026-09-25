@@ -159,6 +159,8 @@
     <!-- Reproductor: fallback automático de fuente -->
     <string name="video_unsupported">Este aparato no puede mostrar el vídeo de %1$s (AV1): solo se oye el audio. Prueba otra fuente.</string>
     <string name="source_falling_back">%1$s no responde. Probando %2$s…</string>
+    <string name="source_too_slow">%1$s va muy lento ahora mismo. Probando %2$s…</string>
+    <string name="source_slow_kept">%1$s va muy lento ahora mismo: si no quieres esperar, elige otra fuente.</string>
     <string name="source_all_failed">Ninguna fuente responde (la última: %1$s). Prueba otra o vuelve más tarde.</string>
     <string name="source_none_works">No se pudo reproducir el episodio. Prueba otra fuente.</string>
 

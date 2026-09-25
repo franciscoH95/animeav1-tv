@@ -1,7 +1,9 @@
 package com.animeav1.data
 
 import android.content.Context
+import android.content.SharedPreferences
 import android.os.SystemClock
+import androidx.core.content.edit
 import android.util.LruCache
 import com.animeav1.data.model.*
 import kotlinx.coroutines.Dispatchers
@@ -60,6 +62,8 @@ object AnimeRepository {
      */
     private const val FAILED_SOURCE_BASE_TTL = 10 * 60 * 1000L
     private const val FAILED_SOURCE_MAX_TTL  = 2 * 60 * 60 * 1000L
+    // Una marca guardada que lleva más de esto sin repetirse se olvida al arrancar, racha incluida.
+    private const val FAILED_SOURCE_FORGET_MS = 24 * 60 * 60 * 1000L
 
     /** Tope de una resolución DNS en [streamClient]. Ver [BoundedDns]. */
     private const val DNS_TIMEOUT_MS = 4_000L
@@ -133,8 +137,19 @@ object AnimeRepository {
      */
     private val failedSources = HashMap<String, SourceFailure>()
 
+    /**
+     * [failedSources] en disco, `host → "horaDePared,racha"`. ⚠️ Sin esto las marcas morían con el
+     * proceso, y en una TV la app se abre cada tarde con el proceso nuevo: el primer episodio de
+     * cada sesión volvía a esperar a Zilla (caído desde hace días) y a un nodo de MP4Upload en
+     * racha lenta que la sesión anterior ya había descartado. Se guarda la hora de PARED porque
+     * `elapsedRealtime` vuelve a cero al reiniciar la tele; al leerla se convierte en edad.
+     */
+    private var failurePrefs: SharedPreferences? = null
+
     /** Must be called once from Application.onCreate() before any network call. */
     fun init(context: Context) {
+        failurePrefs = context.getSharedPreferences("source_failures", Context.MODE_PRIVATE)
+            .also(::restoreFailures)
         val httpCacheDir = File(context.cacheDir, "http_cache")
         client = OkHttpClient.Builder()
             .cache(Cache(httpCacheDir, 50L * 1024 * 1024)) // 50 MB disk cache
@@ -441,15 +456,41 @@ object AnimeRepository {
         if (host == null) { streamCache.remove(embedUrl); return }
         streamCache.snapshot().keys.filter { hostOf(it) == host }.forEach { streamCache.remove(it) }
         val now = clock()
-        synchronized(failedSources) {
-            failedSources[host] = SourceFailure(now, (failedSources[host]?.streak ?: 0) + 1)
+        val streak = synchronized(failedSources) {
+            val f = SourceFailure(now, (failedSources[host]?.streak ?: 0) + 1)
+            failedSources[host] = f
+            f.streak
         }
+        failurePrefs?.edit { putString(host, "${System.currentTimeMillis()},$streak") }
     }
 
     /** El proveedor de [embedUrl] acaba de reproducir: deja de contar como caído. */
     fun markSourceWorking(embedUrl: String) {
         val host = hostOf(embedUrl) ?: return
-        synchronized(failedSources) { failedSources.remove(host) }
+        val had = synchronized(failedSources) { failedSources.remove(host) != null }
+        if (had) failurePrefs?.edit { remove(host) }
+    }
+
+    /** Recupera las marcas de la sesión anterior (ver [failurePrefs]); las muy viejas se olvidan. */
+    private fun restoreFailures(prefs: SharedPreferences) {
+        val nowWall = System.currentTimeMillis()
+        val now = clock()
+        val stale = mutableListOf<String>()
+        synchronized(failedSources) {
+            for ((host, value) in prefs.all) {
+                val parts = (value as? String)?.split(',')
+                val wallAt = parts?.getOrNull(0)?.toLongOrNull()
+                val streak = parts?.getOrNull(1)?.toIntOrNull()
+                // La hora de pared puede ir hacia atrás (NTP): una edad negativa cuenta como recién.
+                val age = wallAt?.let { (nowWall - it).coerceAtLeast(0) }
+                if (age == null || streak == null || streak < 1 || age > FAILED_SOURCE_FORGET_MS) {
+                    stale += host
+                    continue
+                }
+                failedSources[host] = SourceFailure(now - age, streak)
+            }
+        }
+        if (stale.isNotEmpty()) prefs.edit { stale.forEach(::remove) }
     }
 
     /**
