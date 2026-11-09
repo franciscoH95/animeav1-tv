@@ -75,6 +75,9 @@ ui/
   player/PlaybackPolicy.kt  mitad PURA de lo que depende de la fuente: tiempos de espera, búfer y
                         paciencia del watchdog de MP4Upload, orden por defecto (ver "MP4Upload")
   player/Av1Support.kt  si el aparato decodifica AV1 Main10 por HARDWARE (se mira al arrancar)
+  player/SourceSelector.kt  mitad PURA de la selección de fuentes de un episodio: con cuál se
+                        arranca, cuál sigue si falla, quién la eligió y qué viaja al siguiente;
+                        `PlayerActivity` solo le cuenta lo que pasa y ejecuta los efectos
   player/ThroughputMeter.kt  mitad PURA: caudal de un stream contando solo el tiempo con una
                         transferencia abierta (el veredicto de caudal de MP4Upload)
   profile/              ProfilesActivity (selector + gestión), ProfileSettingsActivity (ajustes del
@@ -83,7 +86,7 @@ ui/
   update/               UpdateActivity ("Hay una versión nueva" → descarga → instala)
 AnimeApp.kt             Application; AnimeRepository.init(); appScope (ver más abajo)
 
-app/src/test/            tests JVM puros (JUnit4), 143 en total. Fixtures REALES capturados del
+app/src/test/            tests JVM puros (JUnit4), 189 en total. Fixtures REALES capturados del
                          sitio en test/resources/: catalogo__data.json, mp4upload-embed.html,
                          episodio__data.json (dandadan ep.1 — el único con SUB *y* DUB; captura
                          del 2026-09-24, ya con Voe y Byse) y las dos páginas de Voe
@@ -93,6 +96,7 @@ app/src/test/            tests JVM puros (JUnit4), 143 en total. Fixtures REALES
                          vuelta a cifrar con su misma clave: conserva los 30 trozos y señuelos).
                          Cubren SvelteKitDecoder, StreamUrlParser, EmbedParser, VoeParser,
                          ByseParser/BysePow (con vectores del JS original y dos retos reales), MediaType,
+                         SourceSelector (la selección de fuentes, sin Activity),
                          UpdateManifest y BackupCodec (incluido
                          que un backup del FORMAT 1 se siga importando, y que un FORMAT 3 SIN el
                          campo aditivo `prefs` siga entrando entero) — las piezas que más
@@ -284,7 +288,7 @@ reproducible por ExoPlayer:
       puede elegir otra (⚠️ los toasts de Android 12+ se cortan en dos líneas: el texto está medido).
     - **`skipKnownSlowNode`**: un MP4Upload que resuelve a un nodo marcado se salta al instante —en
       ~1,3 s en vez de 8 s de silencio o 20-40 s de arranque—, salvo que el usuario lo haya pedido en
-      ESTE episodio (`insisted`) o sea el último recurso. ⚠️ **También si es la preferencia guardada
+      ESTE episodio (`SourceSelector.insisted`) o sea el último recurso. ⚠️ **También si es la preferencia guardada
       de la serie**: la preferencia dice "MP4Upload cuando funcione", no "este fichero a cualquier
       precio". Con la regla anterior (no saltar lo que "eligió el usuario", preferencias incluidas) un
       episodio en `a3` dejaba "Cargando vídeo desde MP4Upload" **43 s** en pantalla (medido en la
@@ -462,15 +466,15 @@ lleva el `EmbedServer` entero. Si añades comparaciones por nombre, vuelves a me
   llegar a READY, elegir "Voe (Doblado)" y darle a ⏭ mientras cargaba abría el episodio siguiente con
   la preferencia vieja (subtitulado). Regla: **una elección sin guardar vale exactamente como una
   guardada**.
-  - Qué viaja se decide AL CAMBIAR de episodio (`unsavedUserChoice`), no apuntando "la última
-    elección" al elegir: la que está resolviendo (`pendingPrefEmbed`), la que suena sin haberse
-    guardado (`currentStreamPicked`) o la traída de un episodio anterior (`carriedPref`). Así una
+  - Qué viaja se decide AL CAMBIAR de episodio (`SourceSelector.unsavedChoice`), no apuntando "la última
+    elección" al elegir: la que está resolviendo (`SourceSelector.pending`), la que suena sin haberse
+    guardado (`SourceSelector.pickedStream`) o la traída de un episodio anterior (`SourceSelector.carried`). Así una
     elección sustituida por otra no viaja, una que falló tampoco (`noteSourceFailed` la quitó), y la
     que sigue sonando tras fallar la siguiente sí. Va en los extras con `preferredFromUser`.
-  - El episodio que la recibe (`carriedPref`) la usa EN LUGAR de la tabla, y si tiene de verdad ese
-    servidor Y esa pista, ponerla cuenta como elección del usuario (`matchesCarried`, decidido en
+  - El episodio que la recibe (`SourceSelector.carried`) la usa EN LUGAR de la tabla, y si tiene de verdad ese
+    servidor Y esa pista, ponerla cuenta como elección del usuario (`SourceSelector.matchesCarried`, decidido en
     `onServerSelected`, así que vale igual por el pick por defecto, el fallback o "Reintentar"): se
-    guarda al sonar. Al guardar cualquier elección, `carriedPref` pasa a ser ESA (no se borra): lo
+    guarda al sonar. Al guardar cualquier elección, `SourceSelector.carried` pasa a ser ESA (no se borra): lo
     que viaja no depende de que la escritura fire-and-forget en Room termine antes de que el
     episodio siguiente la lea.
   - ⚠️ **Si se PRUEBA y falla, se queda solo la pista** (`server = null`): el doblaje elegido sigue,
@@ -500,11 +504,11 @@ lleva el `EmbedServer` entero. Si añades comparaciones por nombre, vuelves a me
   DOBLADA (y no se autorreparaba: al reabrir volvía a escribir SUB), y un stall de 25 s en YourUpload
   la dejaba fijada en HLS.
   ⚠️ **Y ni siquiera la del panel se guarda al pulsar: se guarda al llegar a `STATE_READY`**
-  (`pendingPrefEmbed` → `onSourceWorking`), y solo si lo que reproduce es lo que se eligió. Guardándola
+  (`SourceSelector.pending` → `onSourceWorking`), y solo si lo que reproduce es lo que se eligió. Guardándola
   al pulsar, un solo toque en HLS con Zilla caído dejaba la serie fijada a un servidor muerto: el
   fallback nunca escribe preferencias, así que no se autorreparaba y cada episodio arrancaba esperándolo.
-  ⚠️ **"Esto lo eligió el usuario" va CON el stream** (`currentStreamPicked`), no en un hueco suelto:
-  `pendingPrefEmbed` solo vive mientras la elección resuelve, y al llegar su URL (`playStream`) pasa
+  ⚠️ **"Esto lo eligió el usuario" va CON el stream** (`SourceSelector.pickedStream`), no en un hueco suelto:
+  `SourceSelector.pending` solo vive mientras la elección resuelve, y al llegar su URL (`playStream`) pasa
   al stream y se guarda en SU primer READY. La elección y los READY no llegan en orden: el player viejo
   sigue vivo mientras la nueva resuelve y puede salir de un rebuffer o recibir un seek (media3 pasa
   READY→BUFFERING→READY), y el usuario puede elegir otra encima antes de que la primera arranque. Con
@@ -520,8 +524,8 @@ lleva el `EmbedServer` entero. Si añades comparaciones por nombre, vuelves a me
   el fallback en cadena el valor se lee de `pendingServerSwitch` **antes** de resetearlo.
   ⚠️ El pick por defecto **espera a `prefsReady`**: al recrearse la Activity el StateFlow retenido de
   embeds reemite al instante y corría con `preferredServer`/`preferredAudio` todavía a null.
-- **Fallback automático de fuente.** `triedEmbeds` recuerda lo ya intentado y
-  `nextUntriedSource(failed)` devuelve la siguiente fuente **de la misma pista de audio** (nunca
+- **Fallback automático de fuente.** `SourceSelector.tried` recuerda lo ya intentado y
+  `SourceSelector.nextUntried(failed)` devuelve la siguiente fuente **de la misma pista de audio** (nunca
   salta de doblado a subtitulado por su cuenta). Cuando un stream falla —o el watchdog lo mata— se
   prueba sola la siguiente y solo se abre el panel cuando **se agotan todas**.
   ⚠️ Antes cualquier fallo eran 25 s de spinner y luego un panel de "servidores": una decisión
@@ -532,15 +536,15 @@ lleva el `EmbedServer` entero. Si añades comparaciones por nombre, vuelves a me
   ⚠️ **El aviso "X no responde. Probando Y…" va en `loadingNote`**, no escrito a pelo en `statusText`:
   `onServerSelected` → `showLoading()` y luego `StreamState.Resolving` repintan el overlay, así que el
   aviso duraba un frame y el usuario solo veía cambiar el nombre del servidor tras 25 s de espera.
-  ⚠️ **Antes que una desconocida, la que estaba sonando** (`lastWorkingEmbed`, la última que llegó a
+  ⚠️ **Antes que una desconocida, la que estaba sonando** (`SourceSelector.lastWorking`, la última que llegó a
   READY en este episodio). Si el usuario cambia desde el panel y la nueva no arranca, se vuelve a la de
   antes —UNA vez: si vuelve a fallar sin llegar a READY no se insiste—. Sin esto la cadena la saltaba
-  (ya estaba en `triedEmbeds`) y podía acabar en "Ninguna fuente responde" con una fuente que
+  (ya estaba en `SourceSelector.tried`) y podía acabar en "Ninguna fuente responde" con una fuente que
   funcionaba hacía un momento. Y deja de serlo en cuanto ELLA falla (`noteSourceFailed`): si no, tras
   caerse a mitad de episodio la cadena volvía a ella —25 s más de watchdog— antes de probar las que
   quedaban sin probar.
   ⚠️ **Lo que ha fallado hace poco va al final** (`AnimeRepository.markSourceFailed/failurePenalty`,
-  por HOST): el pick por defecto y `nextUntriedSource` lo dejan para el final, así que con un
+  por HOST): el pick por defecto y `SourceSelector.nextUntried` lo dejan para el final, así que con un
   proveedor caído el episodio siguiente ya no empieza esperándolo. Se ordena por lo que le QUEDA a la
   marca, no por sí/no: cuando fallan todas a la vez (un corte de red), la guardada sigue siendo la
   primera opción y la que lleva más tiempo muerta (Zilla, con su racha) la última — por sí/no, el
@@ -559,7 +563,7 @@ lleva el `EmbedServer` entero. Si añades comparaciones por nombre, vuelves a me
     anterior ya había descartado. Se guarda la hora de PARED —`elapsedRealtime` vuelve a cero al
     reiniciar la tele— y al leerla se convierte en edad; una marca de más de 24 h se olvida con racha
     y todo.
-  - ⚠️ **La pista se decide ANTES de ordenar** (`pickDefaultEmbed`): la preferida si el episodio la
+  - ⚠️ **La pista se decide ANTES de ordenar** (`SourceSelector.pickDefault`): la preferida si el episodio la
     trae; si no, la primera (SUB). Ordenando las dos pistas juntas, sin preferencia de audio (el caso
     normal al abrir desde la ficha o Inicio) y con los hosts de SUB marcados, el primer "vivo" podía
     ser de DOBLADO: pasa en episodios cuyo DUB tiene un host que su SUB no tiene (se encontró uno en
@@ -586,7 +590,7 @@ lleva el `EmbedServer` entero. Si añades comparaciones por nombre, vuelves a me
   vuelve a poner `emptyList()`, el mismo valor, así que el colector no se enteraba y `showLoading`
   dejaba la pantalla con el spinner para siempre, sin mensaje y **sin ningún botón**: un cuelgue del
   que solo se salía con BACK.
-  ⚠️ Reintentar a mano limpia `triedEmbeds` (en la rama que SÍ tiene embed, no en la que no lo tiene):
+  ⚠️ Reintentar a mano limpia `SourceSelector.tried` (en la rama que SÍ tiene embed, no en la que no lo tiene):
   es "vuelve a intentarlo todo". Sin eso, tras agotar la cadena por un corte de red pasajero cada
   pulsación reintentaba SOLO la última fuente que falló, 25 s de watchdog por pulsación.
 - **Scrub acelerado (mantener IZQ/DER).** El paso crece con las repeticiones: **10 s** las 3
@@ -613,8 +617,8 @@ lleva el `EmbedServer` entero. Si añades comparaciones por nombre, vuelves a me
   **8 s si lo puso la app** (el orden por defecto, un fallback **o la preferencia guardada o traída**:
   el primer byte llega normalmente en 2-4 s, así que 8 s de silencio es una racha; a otra fuente ya, y
   su nodo queda marcado) y **50 s con paciencia** (más que los 45 s de lectura): si el usuario lo ha
-  **pedido en ESTE episodio** (`insisted`: lo pulsó en el panel —`clickedEmbed`— o le dio a
-  **"Reintentar"** —`retriedEmbed`, que no se guarda como preferencia—), si ya ha sonado y si es el
+  **pedido en ESTE episodio** (`SourceSelector.insisted`: lo pulsó en el panel —`SourceSelector.clicked`— o le dio a
+  **"Reintentar"** —`SourceSelector.retried`, que no se guarda como preferencia—), si ya ha sonado y si es el
   **último recurso** —sin eso, en los episodios cuyo Voe está muerto la única copia buena (MP4Upload en `a3`)
   se cortaba a los 8 s y acababa en "ninguna fuente responde"—. El resto de fuentes siguen EXACTAMENTE
   con la regla de 25 s.
@@ -746,7 +750,7 @@ lleva el `EmbedServer` entero. Si añades comparaciones por nombre, vuelves a me
   isWatched`.
   `preferredAudio` (`"SUB"`/`"DUB"`) se arrastra SIEMPRE al pasar de episodio: si venías viendo el
   doblaje, el siguiente episodio no debe saltar al subtitulado solo porque SUB va primero.
-  ⚠️ `preferredServer` solo viaja si es una elección del usuario (`unsavedUserChoice`, con
+  ⚠️ `preferredServer` solo viaja si es una elección del usuario (`SourceSelector.unsavedChoice`, con
   `preferredFromUser`). Antes viajaba también lo que sonaba por el pick por defecto o por un
   fallback, y UN fallback (Byse sin caudal un momento) dejaba el resto del maratón en Voe aunque Byse
   volviera: esquivar lo que ha fallado es cosa de las marcas de fallo, que caducan y crecen.
@@ -1877,9 +1881,10 @@ acababa de actualizar se quedaba sin saber qué había cambiado.
   fuera de git); ⚠️ sin ese fichero el release sale **sin firmar** (`app-release-unsigned.apk`) y no
   se puede ni instalar — `tools/release.sh` para antes de publicar algo así.
 - **Cobertura de tests mínima:** solo hay tests JVM de `SvelteKitDecoder`, `StreamUrlParser`, `VoeParser`,
-  `EmbedParser`, `BackupCodec`, `AiringSchedule`, `MediaType` y `UpdateManifest`. Nada de Room (haría falta `androidTest` o Robolectric), ni de ViewModels, ni de UI —
-  en particular, la selección SUB/DUB de `PlayerActivity` y el agrupado de `ServerAdapter` solo están
-  verificados a mano en el emulador.
+  `ByseParser`, `EmbedParser`, `BackupCodec`, `AiringSchedule`, `MediaType`, `UpdateManifest`,
+  `PlaybackPolicy`, `ThroughputMeter`, `AnimeImages` y `SourceSelector`. Nada de Room (haría falta `androidTest` o Robolectric), ni de ViewModels, ni de UI —
+  en particular, cómo `PlayerActivity` conecta `SourceSelector` con el reproductor y el agrupado de
+  `ServerAdapter` solo están verificados a mano en el emulador.
 - **Stack ~2 años sin actualizar:** media3 1.3.1 (vs 1.10.x), Room 2.6.1, Kotlin 1.9.24, kapt en vez de
   KSP, `enableJetifier` activo sin ninguna dependencia de support-library que lo justifique. `targetSdk 34`
   ya no cumple el mínimo de Play. Subirlo es una cascada (compileSdk, Kotlin 2.x, KSP).
