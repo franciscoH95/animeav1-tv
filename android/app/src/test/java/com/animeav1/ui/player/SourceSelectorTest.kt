@@ -408,6 +408,15 @@ class SourceSelectorTest {
     }
 
     @Test
+    fun `una eleccion ya sustituida por otra fuente no recibe la cesion`() {
+        val s = selector().apply {
+            onSelected(voeDub, fromUser = true)
+            onSelected(hlsSub, fromUser = false)
+        }
+        assertNull(s.pickToDeferTo(yourSub))
+    }
+
+    @Test
     fun `sin eleccion pendiente no se cede`() {
         assertNull(selector().pickToDeferTo(hlsSub))
     }

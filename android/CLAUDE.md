@@ -86,7 +86,7 @@ ui/
   update/               UpdateActivity ("Hay una versión nueva" → descarga → instala)
 AnimeApp.kt             Application; AnimeRepository.init(); appScope (ver más abajo)
 
-app/src/test/            tests JVM puros (JUnit4), 189 en total. Fixtures REALES capturados del
+app/src/test/            tests JVM puros (JUnit4), 190 en total. Fixtures REALES capturados del
                          sitio en test/resources/: catalogo__data.json, mp4upload-embed.html,
                          episodio__data.json (dandadan ep.1 — el único con SUB *y* DUB; captura
                          del 2026-09-24, ya con Voe y Byse) y las dos páginas de Voe
