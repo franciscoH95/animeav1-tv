@@ -31,6 +31,7 @@ import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import coil.load
+import coil.size.Size
 import com.animeav1.R
 import com.animeav1.data.AiringSchedule
 import com.animeav1.data.AnimeImages
@@ -243,6 +244,9 @@ class SeriesFragment : Fragment() {
         val backdrop = view.findViewById<ImageView>(R.id.series_backdrop)
         backdrop.load(series.backdropUrl) {
             crossfade(true)
+            // A tamaño original para que `intrinsicWidth` sea el ancho real del fichero: ajustada a
+            // la vista, Coil podría reducirla y un backdrop bueno no pasaría el filtro de abajo.
+            size(Size.ORIGINAL)
             error(R.drawable.banner_fallback)
             listener(onSuccess = { _, result ->
                 if (!AnimeImages.isSharpBanner(result.drawable.intrinsicWidth)) {
