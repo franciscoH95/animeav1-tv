@@ -28,6 +28,16 @@ class AnimeImagesTest {
         )
     }
 
+    @Test fun `un backdrop solo sirve de banner si es lo bastante ancho`() {
+        // Medido en el CDN: los backdrops miden 1900×400 y alguno 1522×320. La portada que antes
+        // se estiraba en su lugar es mucho más estrecha y se veía pixelada.
+        assertEquals(true, AnimeImages.isSharpBanner(1900))
+        assertEquals(true, AnimeImages.isSharpBanner(1522))
+        assertEquals(true, AnimeImages.isSharpBanner(AnimeImages.MIN_BANNER_WIDTH_PX))
+        assertEquals(false, AnimeImages.isSharpBanner(AnimeImages.MIN_BANNER_WIDTH_PX - 1))
+        assertEquals(false, AnimeImages.isSharpBanner(0))
+    }
+
     @Test fun `sin una portada reconocible no se inventa una URL`() {
         // Devolver algo aquí sería pedirle al CDN una ruta imposible en cada tile.
         assertEquals("", AnimeImages.episodeThumbFromCover("", 1))

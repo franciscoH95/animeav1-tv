@@ -1517,9 +1517,12 @@ izquierdo + rejilla derecha).
   ⚠️ La sección se queda **por debajo de la altura de pantalla a propósito**, para que asome la
   cabecera "Episodios N": si la primera pantalla se llena entera, en una TV nadie sabe que ABAJO
   lleva a alguna parte.
-  ⚠️ Si la serie no tiene backdrop, el banner cae a la **portada recortada** y solo después a un
-  degradado neutro: el `placeholder_backdrop` con su "play" gigante, a lo ancho de la cabecera, se
-  leía como un fallo de carga.
+  ⚠️ Si la serie no tiene un backdrop de buena resolución, el banner se queda en el **degradado
+  neutro** (`banner_fallback`). Antes caía a la portada recortada, que es estrecha y a lo ancho de
+  una TV salía pixelada. Muchas series recientes no tienen backdrop (el CDN da 403); los que hay
+  miden 1900×400 (alguno 1522×320), y uno de menos de `AnimeImages.MIN_BANNER_WIDTH_PX` (1200) se
+  descarta igual. El `placeholder_backdrop` con su "play" gigante tampoco vale: se leía como un
+  fallo de carga.
 - **Sección 2**: la rejilla de episodios, **5 columnas fijas** (`EPISODE_COLUMNS`). 5 × 10 filas son
   los 50 de un bloque exactos, así que un bloque es una cuadrícula completa y no una última fila
   coja. Hubo una etapa de columnas responsivas (a partir de un ancho objetivo por tile) que en una

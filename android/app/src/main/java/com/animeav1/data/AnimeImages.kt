@@ -37,6 +37,15 @@ object AnimeImages {
 
     fun backdrop(id: Int): String = "$CDN/backdrops/$id.jpg"
 
+    /**
+     * Ancho mínimo para usar una imagen como banner de la ficha, que ocupa la pantalla de lado a
+     * lado. Los backdrops del CDN miden 1900 px de ancho (alguno 1522); la portada, que es lo que
+     * se ponía antes cuando faltaba el backdrop, es mucho más estrecha y estirada se veía pixelada.
+     */
+    const val MIN_BANNER_WIDTH_PX = 1200
+
+    fun isSharpBanner(widthPx: Int): Boolean = widthPx >= MIN_BANNER_WIDTH_PX
+
     fun episodeThumb(seriesId: Int, episodeNumber: Int): String =
         "$CDN/screenshots/$seriesId/$episodeNumber.jpg"
 

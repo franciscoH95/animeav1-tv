@@ -33,6 +33,7 @@ import androidx.recyclerview.widget.RecyclerView
 import coil.load
 import com.animeav1.R
 import com.animeav1.data.AiringSchedule
+import com.animeav1.data.AnimeImages
 import com.animeav1.data.local.ListType
 import androidx.core.widget.doAfterTextChanged
 import com.animeav1.data.model.EpisodeRef
@@ -235,16 +236,17 @@ class SeriesFragment : Fragment() {
         // Backfill meta + refresh the available-episode count so the list's "vistos/total" badge
         // tracks airing series (e.g. 8 -> 9) the same way this detail view does.
         localVm.updateSeriesMeta(slug, seriesYear, series.status, series.category, series.episodes.size)
-        // ⚠️ Si la serie no tiene backdrop, el banner cae a la PORTADA recortada antes que a un
-        // dibujo de reserva: en la cabecera nueva, el placeholder con su "play" gigante se leía
-        // como un fallo de carga. El degradado neutro queda solo para cuando tampoco hay portada.
+        // ⚠️ Sin un backdrop de buena resolución, el banner se queda en el degradado neutro. Antes
+        // caía a la PORTADA recortada, que es estrecha y a lo ancho de una TV salía pixelada; y el
+        // placeholder con su "play" gigante se leía como un fallo de carga. Muchas series recientes
+        // no tienen backdrop (el CDN da 403).
         val backdrop = view.findViewById<ImageView>(R.id.series_backdrop)
         backdrop.load(series.backdropUrl) {
             crossfade(true)
-            listener(onError = { _, _ ->
-                backdrop.load(series.coverUrl) {
-                    crossfade(true)
-                    error(R.drawable.banner_fallback)
+            error(R.drawable.banner_fallback)
+            listener(onSuccess = { _, result ->
+                if (!AnimeImages.isSharpBanner(result.drawable.intrinsicWidth)) {
+                    backdrop.setImageResource(R.drawable.banner_fallback)
                 }
             })
         }
