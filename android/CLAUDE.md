@@ -1246,6 +1246,11 @@ queda `MainActivity → ProfilesActivity`). Al volver de recientes tampoco se ve
   y se ajusta, un fichero rehecho no dice a qué nivel se hizo. Si algún día se cambia el sonido, hay
   que volver a medir: el nivel de la constante está calculado para ESTE fichero. Para cambiarlo basta dejar otro fichero con ese nombre;
   si dura distinto, ajustar `HOLD_MS`.
+  **Hay una segunda sintonía** (`res/raw/intro_sting_fah.m4a`, 29 KB, 2,3 s) y en cada apertura suena
+  una al azar (`IntroActivity.STINGS`). ⚠️ El original estaba a −26,8 LUFS, 13,9 dB por debajo de la
+  primera (−12,9), y `setVolume` no puede subir de 1,0: se normalizó **en el fichero** (`volume=13.9dB`
+  con ffmpeg; queda en −13,0 LUFS y pico −1,7 dBFS) para que las dos compartan `INTRO_VOLUME`. Una
+  tercera tiene que entrar normalizada a ese mismo nivel.
 - ⚠️ **La animación NO se lanza en `onCreate`**: ahí la ventana todavía no se dibuja —el sistema está
   reproduciendo su propia animación de apertura— así que los primeros fotogramas se perdían y la
   cortinilla aparecía ya empezada, "cortada". Arranca en `onEnterAnimationComplete`, con el primer

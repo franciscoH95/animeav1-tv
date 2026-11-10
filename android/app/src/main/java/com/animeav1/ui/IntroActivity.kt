@@ -46,6 +46,9 @@ class IntroActivity : AppCompatActivity() {
      *
      * Se baja aquí y no rebajando el `.m4a` porque una constante se lee y se ajusta, mientras que un
      * fichero regenerado no dice a qué nivel se hizo.
+     *
+     * ⚠️ Vale para las dos sintonías porque están igualadas en sonoridad (−13 LUFS): una sintonía
+     * nueva hay que normalizarla a ese nivel antes de añadirla, o sonará más alta o más baja que la otra.
      */
     private val INTRO_VOLUME = 0.35f
     private var show: Job? = null
@@ -197,7 +200,7 @@ class IntroActivity : AppCompatActivity() {
                 .setContentType(AudioAttributes.CONTENT_TYPE_MOVIE)
                 .build()
             val session = (getSystemService(AUDIO_SERVICE) as AudioManager).generateAudioSessionId()
-            player = MediaPlayer.create(this, R.raw.intro_sting, attrs, session)?.apply {
+            player = MediaPlayer.create(this, STINGS.random(), attrs, session)?.apply {
                 // ⚠️ El volumen se baja AQUÍ y no rebajando el fichero: así queda en una constante
                 // que se lee y se ajusta, en vez de en un .m4a que hay que volver a sintetizar y del
                 // que nadie recuerda a qué nivel se generó. `setVolume` sí se puede llamar después
@@ -241,6 +244,9 @@ class IntroActivity : AppCompatActivity() {
         const val PRESENTS_IN_MS = 520L
 
         /** Desde que arranca la animación hasta que empieza a irse. Cubre la sintonía (2,0 s). */
+        /** Sintonías de arranque; en cada apertura suena una al azar. */
+        val STINGS = listOf(R.raw.intro_sting, R.raw.intro_sting_fah)
+
         const val HOLD_MS = 2200L
         const val FADE_MS = 500L
 
