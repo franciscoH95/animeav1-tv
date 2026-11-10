@@ -27,7 +27,8 @@ import kotlinx.coroutines.launch
 class MyListFragment : Fragment() {
 
     private lateinit var localVm: LocalViewModel
-    private var activeList = ListType.POR_VER
+    /** Sub-lista al abrir: la primera de la fila (Viendo → Por ver → Completadas → Favoritos). */
+    private var activeList = ListType.VIENDO
     private var listJob: Job? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {

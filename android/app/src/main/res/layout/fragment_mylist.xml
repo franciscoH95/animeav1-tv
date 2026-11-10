@@ -43,11 +43,11 @@
                 android:gravity="center_vertical">
 
                 <Button
-                    android:id="@+id/btn_list_por_ver"
+                    android:id="@+id/btn_list_viendo"
                     style="@style/Widget.AppCompat.Button.Borderless"
                     android:layout_width="wrap_content"
                     android:layout_height="38dp"
-                    android:text="@string/list_por_ver"
+                    android:text="@string/list_viendo"
                     android:textSize="13sp"
                     android:textColor="@drawable/tab_text_color"
                     android:background="@drawable/tab_background"
@@ -56,11 +56,11 @@
                     android:layout_marginEnd="6dp" />
 
                 <Button
-                    android:id="@+id/btn_list_viendo"
+                    android:id="@+id/btn_list_por_ver"
                     style="@style/Widget.AppCompat.Button.Borderless"
                     android:layout_width="wrap_content"
                     android:layout_height="38dp"
-                    android:text="@string/list_viendo"
+                    android:text="@string/list_por_ver"
                     android:textSize="13sp"
                     android:textColor="@drawable/tab_text_color"
                     android:background="@drawable/tab_background"
