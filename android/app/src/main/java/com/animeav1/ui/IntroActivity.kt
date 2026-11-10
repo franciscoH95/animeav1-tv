@@ -243,10 +243,13 @@ class IntroActivity : AppCompatActivity() {
         const val PRESENTS_DELAY_MS = 420L
         const val PRESENTS_IN_MS = 520L
 
-        /** Desde que arranca la animación hasta que empieza a irse. Cubre la sintonía (2,0 s). */
         /** Sintonías de arranque; en cada apertura suena una al azar. */
         val STINGS = listOf(R.raw.intro_sting, R.raw.intro_sting_fah)
 
+        /**
+         * Desde que arranca la animación hasta que empieza a irse. Cubre la sintonía original
+         * (2,0 s); la segunda (2,3 s) termina durante los primeros ~80 ms de [FADE_MS], sin cortarse.
+         */
         const val HOLD_MS = 2200L
         const val FADE_MS = 500L
 
