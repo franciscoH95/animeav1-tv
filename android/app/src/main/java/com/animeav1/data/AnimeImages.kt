@@ -46,6 +46,13 @@ object AnimeImages {
 
     fun isSharpBanner(widthPx: Int): Boolean = widthPx >= MIN_BANNER_WIDTH_PX
 
+    /**
+     * Ancho máximo al que se decodifica el banner: acota la memoria si el CDN publica imágenes
+     * enormes. Tiene que quedar por encima de [MIN_BANNER_WIDTH_PX], o reducir un backdrop bueno
+     * lo haría fallar el filtro.
+     */
+    const val BANNER_DECODE_WIDTH_PX = 2400
+
     fun episodeThumb(seriesId: Int, episodeNumber: Int): String =
         "$CDN/screenshots/$seriesId/$episodeNumber.jpg"
 

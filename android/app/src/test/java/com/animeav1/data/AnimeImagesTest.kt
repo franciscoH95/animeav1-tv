@@ -38,6 +38,10 @@ class AnimeImagesTest {
         assertEquals(false, AnimeImages.isSharpBanner(0))
     }
 
+    @Test fun `reducir un backdrop al tope de decodificacion nunca lo deja por debajo del minimo`() {
+        assertEquals(true, AnimeImages.isSharpBanner(AnimeImages.BANNER_DECODE_WIDTH_PX))
+    }
+
     @Test fun `sin una portada reconocible no se inventa una URL`() {
         // Devolver algo aquí sería pedirle al CDN una ruta imposible en cada tile.
         assertEquals("", AnimeImages.episodeThumbFromCover("", 1))
